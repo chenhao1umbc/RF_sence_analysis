@@ -1,4 +1,4 @@
-#@title rid=125260 warm start, warm shared Hhat, gamma learning rate 0.01
+#@title rid=125260 warm start, warm shared Hhat, gamma learning rate 0.01, changed model rate 0.005, em eps as 5e-4
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
