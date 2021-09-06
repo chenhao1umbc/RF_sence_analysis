@@ -6,6 +6,6 @@
 
 echo "it begins"
 nvidia-smi
-conda avtivate base
+source activate base
 which conda
 python -u speed_test.py > speed_test.out 2>&1
