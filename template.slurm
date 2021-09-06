@@ -3,8 +3,6 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=24:00:00
 #SBATCH --constraint=rtx_6000
-# source /usr/ebuild/software/Anaconda3/2020.07/etc/profile.d/conda.sh
-# conda activate hc_env
 
 echo "it begins"
 nvidia-smi
