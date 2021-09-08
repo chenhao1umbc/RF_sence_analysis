@@ -4,7 +4,7 @@ if True gives each cell an indent, so that each cell could be folded in vs code
 #%% load dependency 
 if True:
     from utils import *
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"
     plt.rcParams['figure.dpi'] = 150
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
@@ -1261,6 +1261,7 @@ if True:
         torch.save([res, res2], 'res_nem_shat_hhat.pt')
 
 #%% show 20db, 10db, 5db, 0db result
+    "This code shows EM is boosted by a little bit noise"
     # res, _ = torch.load('../data/nem_ss/nem_res/res_nem_shat_hhat_snr5.pt') # s,h
     # _, res = torch.load('../data/nem_ss/nem_res/res_nem_shat_hhat_snr5.pt') # _,h
     # res, _ = torch.load('../data/nem_ss/nem_res/res_shat_hhat_snrinf.pt') # s,_ EM
@@ -1302,5 +1303,4 @@ if True:
     plt.legend(['NEM', 'EM'])
     plt.title('Correlation result for h')
 
-    
 #%%
