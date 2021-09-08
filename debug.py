@@ -1278,33 +1278,34 @@ if True:
     # plt.show()
 
     ss = []
-    for i in [0, 5, 10, 20, 25, 30, 40, 'inf']:
-        _, res = torch.load(f'../data/nem_ss/nem_res/res_nem_shat_hhatsnr_{i}.pt') # s, h NEM
+    for i in [0, 5, 10, 20, 'inf']:
+        res, _ = torch.load(f'../data/nem_ss/nem_res/res_em_sh_init10db_snr{i}.pt') # s, h NEM
         s = 0
         for i in range(100):
             for ii in range(20):
                 s = s + res[i][ii]
         print(s/2000)
         ss.append(s/2000)
-    plt.plot([0, 5, 10, 20, 25, 30, 40, 'inf'], ss, '-x')
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
 
     ss = []
-    for i in [0, 5, 10, 20, 25, 30, 40, 'inf']:
-        _, res = torch.load(f'../data/nem_ss/nem_res/res_shat_hhat_snr{i}.pt') # s, h NEM
+    for i in [0, 5, 10, 20, 'inf']:
+        res, _ = torch.load(f'../data/nem_ss/nem_res/EM_NEM_snr/res_nem_shat_hhatsnr_{i}.pt') # s, h NEM
         s = 0
         for i in range(100):
             for ii in range(20):
                 s = s + res[i][ii]
         print(s/2000)
         ss.append(s/2000)
-    plt.plot([0, 5, 10, 20, 25, 30, 40, 'inf'], ss, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-o')
+
+
     plt.ylabel('Averaged correlation result')
     plt.xlabel('SNR')
-    plt.legend(['NEM', 'EM'])
-    plt.title('Correlation result for h')
+    plt.legend(['EM', 'NEM'])
+    plt.title('Correlation result for s')
 
 #%% 10db result as the initial 
-if True:
     import itertools, time
     t = time.time()
     d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
@@ -1462,21 +1463,10 @@ if True:
         print(f'finished {i} samples')
     # torch.save([res, res2], 'res_em_shat_hhat_snr20.pt')
 
-    res, res2 = [], []
-    for i in range(100):
-        c, cc = [], []
-        for ii in range(20):
-            shat, Hhat, vhat, Rb = em_func_mod(x[i], \
-                v_init=vh_all[i,ii], h_init=hh_all[i,ii], seed=ii)
-            c.append(corr(shat.squeeze().abs(), s_all[i]))
-            cc.append(h_corr(h, Hhat))
-        res.append(c)
-        res2.append(cc)
-        print(f'finished {i} samples')
-    torch.save([res, res2], 'res_em_shat_hhat_snrinf.pt')
-
     s = 0 
     for i in range(100):
         for ii in range(20):
             s = s + res[i][ii]
     print(s/2000)
+
+#%%
