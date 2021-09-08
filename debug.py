@@ -1303,4 +1303,52 @@ if True:
     plt.legend(['NEM', 'EM'])
     plt.title('Correlation result for h')
 
-#%%
+#%% 10db result as the initial 
+if True:
+    import itertools, time
+    t = time.time()
+    d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
+    h = torch.tensor(h)
+    ratio = d.abs().amax(dim=(1,2,3))/3
+    x = (d/ratio[:,None,None,None]).permute(0,2,3,1)
+    s_all = s.abs().permute(0,2,3,1)
+
+    def corr(vh, v):
+        J = v.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for jj in permutes:
+            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+            s = 0
+            for j in range(J):
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+            r.append(s)
+        r = sorted(r, reverse=True)
+        return r[0]/J
+        
+    def h_corr(h, hh):
+        J = h.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for p in permutes:
+            temp = hh[:,torch.tensor(p)]
+            s = 0
+            for j in range(J):
+                dino = h[:,j].norm() * temp[:, j].norm()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
+                s = s + nume/dino
+            r.append(s/J)
+        r = sorted(r, reverse=True)
+        return r[0].item()
+
+    # samples = 100
+    # seeds = 20
+    # hh_all = torch.rand(samples, seeds, 3, 3, dtype=torch.cdouble)
+    # vh_all = torch.rand(samples, seeds, 100, 100, 3, dtype=torch.cdouble)
+    # for i in range(samples):
+    #     for ii in range(seeds):
+    #         shat, hh_all[i, ii], vh_all[i, ii], Rb = em_func(awgn(x[i], snr=10), seed=ii)
+    #     print(f'finished {i} sample')
+    # print(f'used {time.time()-t}s')
+    # torch.save([hh_all, vh_all], 'hh_all-vh_all_resforinit.py')
+    hh_all, vh_all = torch.load('hh_all-vh_all_resforinit.py')
