@@ -4,7 +4,7 @@ if True gives each cell an indent, so that each cell could be folded in vs code
 #%% load dependency 
 if True:
     from utils import *
-    os.environ["CUDA_VISIBLE_DEVICES"]="0"
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
     plt.rcParams['figure.dpi'] = 150
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
