@@ -368,7 +368,7 @@ class UNetHalf8to100_19(nn.Module):
 
 
 class UNetHalf16to100(nn.Module):
-    "12 layers here"
+    "14 layers here"
     def __init__(self, n_channels, n_classes, bilinear=False):
         """Only the up part of the unet
         Args:
@@ -385,14 +385,21 @@ class UNetHalf16to100(nn.Module):
         self.inc = DoubleConv(n_channels, self.n_ch)
         self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
-        self.up3 = Up_(self.n_ch//4, self.n_ch//4, bilinear)
+        self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.reshape = nn.Sequential(
-            nn.Conv2d(self.n_ch//4, self.n_ch//8, kernel_size=5, dilation=3),
+            nn.Conv2d(self.n_ch//8, self.n_ch//16, kernel_size=5, dilation=3),
             nn.BatchNorm2d(self.n_ch//16),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//16, self.n_ch//16, kernel_size=5, dilation=3),
+            nn.BatchNorm2d(self.n_ch//16),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//16, self.n_ch//8, kernel_size=3, dilation=2),
+            nn.BatchNorm2d(self.n_ch//8),
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(self.n_ch//8, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.LeakyReLU(inplace=True))
+        self.outc = OutConv(32, n_classes)
         self.outc = OutConv(32, n_classes)
 
     def forward(self, x):
