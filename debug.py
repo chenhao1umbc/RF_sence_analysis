@@ -1469,4 +1469,152 @@ if True:
             s = s + res[i][ii]
     print(s/2000)
 
+#%% Test 1 channel 1 model NEM
+if True:
+    "test rid 135100"
+    from unet.unet_model import UNetHalf8to100 as UNetHalf
+    from skimage.transform import resize
+    import itertools
+    import time
+    t = time.time()
+    d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
+    h = torch.tensor(h)
+    ratio = d.abs().amax(dim=(1,2,3))/3
+    x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
+    s_all = s.abs().permute(0,2,3,1) 
+
+    def corr(vh, v):
+        J = v.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for jj in permutes:
+            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+            s = 0
+            for j in range(J):
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+            r.append(s)
+        r = sorted(r, reverse=True)
+        return r[0]/J
+
+    def h_corr(h, hh):
+        J = h.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for p in permutes:
+            temp = hh[:,torch.tensor(p)]
+            s = 0
+            for j in range(J):
+                dino = h[:,j].norm() * temp[:, j].norm()
+                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                s = s + nume/dino
+            r.append(s/J)
+        r = sorted(r, reverse=True)
+        return r[0].item()
+
+    def nem_func(x, J=3, Hscale=1, Rbscale=100, max_iter=501, seed=1, model=''):
+        torch.manual_seed(seed) 
+        if model == '':
+            print('A model is needed')
+
+        model = torch.load(model)
+        for param in model.parameters():
+            param.requires_grad_(False)
+        model.eval()
+
+        #%% EM part
+        "initial"        
+        N, F, M = x.shape
+        NF= N*F
+        graw = torch.tensor(resize(x[...,0].abs(), [8,8], order=1, preserve_range=True))
+        graw = (graw/graw.max())[None,...]  #standardization shape of [1, 8, 8]
+        graw = torch.stack([graw[:,None] for j in range(J)], dim=1)  # shape of [1,J,8,8]
+        noise = torch.rand(J,1,8,8)
+        for j in range(J):
+            noise[j,0] = awgn(graw[0,j,0], snr=0, seed=j) - graw[0,j,0]
+        g = (graw + noise).cuda().requires_grad_()
+        x = x.cuda()
+
+        vhat = torch.randn(1, N, F, J).abs().to(torch.cdouble).cuda()
+        Hhat = torch.randn(1, M, J).to(torch.cdouble).cuda()*Hscale
+        Rb = torch.ones(1, M).diag_embed().cuda().to(torch.cdouble)*Rbscale
+        Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
+        Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
+        Rx = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb # shape of [N,F,I,M,M]
+        optim_gamma = torch.optim.SGD([g], lr= 0.001)
+        ll_traj = []
+
+        for ii in range(max_iter): # EM iterations
+            "E-step"
+            W = Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() @ Rx.inverse()  # shape of [N, F, I, J, M]
+            shat = W.permute(2,0,1,3,4) @ x[...,None]
+            Rsshatnf = shat @ shat.transpose(-1,-2).conj() + Rs - (W@Hhat@Rs.permute(1,2,0,3,4)).permute(2,0,1,3,4)
+            Rsshat = Rsshatnf.sum([1,2])/NF # shape of [I, J, J]
+            Rxshat = (x[..., None] @ shat.transpose(-1,-2).conj()).sum((1,2))/NF # shape of [I, M, J]
+
+            "M-step"
+            Hhat = Rxshat @ Rsshat.inverse() # shape of [I, M, J]
+            Rb = Rxxhat - Hhat@Rxshat.transpose(-1,-2).conj() - \
+                Rxshat@Hhat.transpose(-1,-2).conj() + Hhat@Rsshat@Hhat.transpose(-1,-2).conj()
+            Rb = Rb.diagonal(dim1=-1, dim2=-2).diag_embed()
+            Rb.imag = Rb.imag - Rb.imag
+
+            # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
+            # vj.imag = vj.imag - vj.imag
+            out = torch.randn(vhat.shape, device='cuda', dtype=torch.double)
+            for j in range(J):
+                out[..., j] = torch.sigmoid(model(g[:,j]).squeeze())
+            vhat.real = threshold(out)
+            loss = loss_func(vhat, Rsshatnf.cuda())
+            optim_gamma.zero_grad()   
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_([g], max_norm=1)
+            optim_gamma.step()
+            torch.cuda.empty_cache()
+            
+            "compute log-likelyhood"
+            vhat = vhat.detach()
+            ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
+            ll_traj.append(ll.item())
+            if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+            if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <5e-4:
+                print(f'EM early stop at iter {ii}')
+                break
+
+        return shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze(), Rb.cpu()
+    
+    location = f'../data/nem_ss/models/model_rid135100.pt'
+    single_data = True
+    if single_data:
+        ind = 0
+        shat, Hhat, vhat, Rb = nem_func(awgn(x_all[ind], snr=0),seed=1,model=location)
+        for i in range(3):
+            plt.figure()
+            plt.imshow(shat.squeeze().abs()[...,i]*ratio[ind])
+            plt.colorbar()
+            # plt.title(f'Estimated sources {i+1}')
+            plt.show()
+        print('h correlation:', h_corr(h, Hhat.squeeze()))
+        print('s correlation:', corr(shat.squeeze().abs(), s_all[ind]))
+        
+        for i in range(3):
+            plt.figure()
+            plt.imshow(s_all[ind].squeeze().abs()[...,i])
+            plt.colorbar()
+            plt.title(f'GT sources {i+1}')
+            plt.show()
+        # sio.savemat('sshat_nem.mat', {'s':s_all[ind].squeeze().abs().numpy(),'s_nem':(shat.squeeze().abs()*ratio[ind]).numpy()})
+    else: # run a lot of samples
+        res, res2 = [], []
+        for i in range(100):
+            c, cc = [], []
+            for ii in range(20):
+                shat, Hhat, vhat, Rb = nem_func(x_all[i],seed=ii,model=location)
+                c.append(corr(shat.squeeze().abs(), s_all[i]))
+                cc.append(h_corr(h, Hhat.squeeze()))
+            res.append(c)
+            res2.append(cc)
+            print(f'finished {i} samples')
+        print('Time used is ', time.time()-t)
+        torch.save([res, res2], 'res_nem_shat_hhat.pt')
+
 #%%
