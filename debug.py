@@ -1530,7 +1530,7 @@ if True:
         graw = torch.stack([graw[:,None] for j in range(J)], dim=1)  # shape of [1,J,8,8]
         noise = torch.rand(J,1,8,8)
         for j in range(J):
-            noise[j,0] = awgn(graw[0,j,0], snr=0, seed=j) - graw[0,j,0]
+            noise[j,0] = awgn(graw[0,j,0], snr=20, seed=j) - graw[0,j,0]
         g = (graw + noise).cuda().requires_grad_()
         x = x.cuda()
 
@@ -1582,7 +1582,7 @@ if True:
 
         return shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze(), Rb.cpu()
     
-    location = f'../data/nem_ss/models/model_rid135100.pt'
+    location = f'../data/nem_ss/models/model_rid125240.pt'
     single_data = True
     if single_data:
         ind = 0
@@ -1617,4 +1617,10 @@ if True:
         print('Time used is ', time.time()-t)
         torch.save([res, res2], 'res_nem_shat_hhat.pt')
 
+#%%
+from unet.unet_model import UNet8to100
+m = UNet8to100(1,1)
+a = torch.rand(5,1,100,100)
+b = torch.rand(5,1,8,8)
+m(a, b)
 #%%
