@@ -450,8 +450,8 @@ class UNet8to100(nn.Module):
         self.up3 = MyUp(self.n_ch//4, self.n_ch//8)
         self.up4 = MyUp(self.n_ch//8, self.n_ch//8)
         self.reshape = nn.Sequential(
-            nn.Conv2d(self.n_ch//8, self.n_ch//16, kernel_size=5, dilation=3),
             nn.MaxPool2d((2,1)),
+            nn.Conv2d(self.n_ch//8, self.n_ch//16, kernel_size=5, dilation=3),
             nn.BatchNorm2d(self.n_ch//16),
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(self.n_ch//16, self.n_ch//16, kernel_size=5, dilation=3),

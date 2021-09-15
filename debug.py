@@ -1622,5 +1622,5 @@ from unet.unet_model import UNet8to100
 m = UNet8to100(1,1)
 a = torch.rand(5,1,100,100)
 b = torch.rand(5,1,8,8)
-m(a, b)
+y = m(a, b)
 #%%
