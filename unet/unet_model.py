@@ -60,6 +60,19 @@ class Up_(nn.Module):
         return self.conv(x)
 
 
+class MyUp(nn.Module):
+    """Upscaling then double conv"""
+
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.up = nn.ConvTranspose2d(in_channels , in_channels // 2, kernel_size=2, stride=2)
+        self.conv = DoubleConv(in_channels//2, out_channels)
+
+    def forward(self, x):
+        x = self.up(x)
+        return self.conv(x)
+
+
 class UNetHalf4to150(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=False):
         """Only the up part of the unet
@@ -312,6 +325,7 @@ class UNetHalf8to100_16(nn.Module):
         out = self.outc(x)
         return out
 
+
 class UNetHalf8to100_19(nn.Module):
     "16 layers here"
     def __init__(self, n_channels, n_classes, bilinear=False):
@@ -408,5 +422,62 @@ class UNetHalf16to100(nn.Module):
         x = self.up2(x)
         x = self.up3(x)
         x = self.reshape(x) 
+        out = self.outc(x)
+        return out
+
+
+class UNet8to100(nn.Module):
+    def __init__(self, n_channels, n_classes):
+        super(UNet8to100, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.n_ch = 128
+
+        self.inc = DoubleConv(n_channels, self.n_ch)
+        self.down1 = Down(self.n_ch, self.n_ch//2)
+        self.down2 = Down(self.n_ch//2, self.n_ch//4)
+        self.down3 = Down(self.n_ch//4, self.n_ch//8)
+        self.trim = nn.Sequential(
+            nn.Conv2d(self.n_ch//8, self.n_ch//16, kernel_size=3),
+            nn.BatchNorm2d(self.n_ch//16),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//16, 1, kernel_size=3),
+            nn.BatchNorm2d(1),
+            nn.LeakyReLU(inplace=True))            
+
+        self.up1 = MyUp(self.n_ch, self.n_ch//2)
+        self.up2 = MyUp(self.n_ch//2, self.n_ch//4)
+        self.up3 = MyUp(self.n_ch//4, self.n_ch//8)
+        self.up4 = MyUp(self.n_ch//8, self.n_ch//8)
+        self.reshape = nn.Sequential(
+            nn.Conv2d(self.n_ch//8, self.n_ch//16, kernel_size=5, dilation=3),
+            nn.MaxPool2d((2,1)),
+            nn.BatchNorm2d(self.n_ch//16),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//16, self.n_ch//16, kernel_size=5, dilation=3),
+            nn.BatchNorm2d(self.n_ch//16),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//16, self.n_ch//8, kernel_size=3, dilation=2),
+            nn.BatchNorm2d(self.n_ch//8),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//8, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.LeakyReLU(inplace=True))
+        self.outc = OutConv(32, n_classes)
+
+    def forward(self, x, gamma):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5  = self.trim(x4)
+        # stacking x and gamma to have regular larger input size
+        x = torch.cat((x5, gamma), dim=-2)
+        x = self.inc(x)
+        x = self.up1(x)
+        x = self.up2(x)
+        x = self.up3(x)
+        x = self.up4(x)
+        x = self.reshape(x)
         out = self.outc(x)
         return out
