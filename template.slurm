@@ -1,11 +1,14 @@
 #!/bin/bash
 #SBATCH --mem=20000
 #SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
+#SBATCH --time=60:00:00
 #SBATCH --constraint=rtx_6000
 
 echo "it begins"
 nvidia-smi
-source activate base
+conda deactivate
+source /nfs/rs/sjkim/users/chenhao1/miniconda3/etc/profile.d/conda.sh
+source activate
 which conda
-python -u speed_test.py > speed_test.out 2>&1
+python -u rid140000.py > rid140000.out 2>&1
+echo "done"
