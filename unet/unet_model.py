@@ -280,7 +280,7 @@ class UNetHalf8to100(nn.Module):
         return out
 
 
-class UNetHalf8to100_16(nn.Module):
+class UNetHalf8to100_morelayers(nn.Module):
     "16 layers here"
     def __init__(self, n_channels, n_classes, bilinear=False):
         """Only the up part of the unet
@@ -326,7 +326,7 @@ class UNetHalf8to100_16(nn.Module):
         return out
 
 
-class UNetHalf8to100_stack(nn.Module):
+class UNetHalf8to100_stack2(nn.Module):
     "16 layers here, input is not added noise, just stack noise and resized mixture"
     def __init__(self, n_channels, n_classes, bilinear=False):
         """Only the up part of the unet
@@ -335,7 +335,7 @@ class UNetHalf8to100_stack(nn.Module):
             n_classes ([type]): [how many output classes=n_sources]
             bilinear (bool, optional): [use interpolation or deconv]. Defaults to False(use deconv).
         """
-        super(UNetHalf8to100_stack, self).__init__()
+        super(UNetHalf8to100_stack2, self).__init__()
         self.n_ch = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
