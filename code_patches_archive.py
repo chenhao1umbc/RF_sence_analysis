@@ -1469,13 +1469,10 @@ if True:
             s = s + res[i][ii]
     print(s/2000)
 
-
 #%% Test 1 model muti-channel
 #TODO
 
-
 #%% Test 1 channel 1 model NEM
-if True:
     "best ones rid 135100/125240/135110"
     from skimage.transform import resize
     import itertools
