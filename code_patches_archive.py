@@ -4,7 +4,7 @@ if True gives each cell an indent, so that each cell could be folded in vs code
 #%% load dependency 
 if True:
     from utils import *
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"
     plt.rcParams['figure.dpi'] = 150
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
@@ -518,7 +518,7 @@ if True:
             vhat = vhat.detach()
             ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
             ll_traj.append(ll.item())
-            if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+            if torch.isnan(torch.tensor(ll_traj[-1])) : inp('nan happened')
             if ii > 3 and abs((ll_traj[ii] - ll_traj[ii-1])/ll_traj[ii-1]) <1e-3:
                 # print(f'EM early stop at iter {ii}')
                 break
@@ -800,7 +800,7 @@ if True:
             if ii > 3 and abs((ll_traj[ii] - ll_traj[ii-1])/ll_traj[ii-1]) <1e-3:
                 # print(f'EM early stop at iter {ii}')
                 break
-            if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+            if torch.isnan(torch.tensor(ll_traj[-1])) : inp('nan happened')
 
         if show_plot:
             plt.figure(100)
@@ -949,7 +949,7 @@ if True:
             vhat = vhat.detach()
             ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
             ll_traj.append(ll.item())
-            if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+            if torch.isnan(torch.tensor(ll_traj[-1])) : inp('nan happened')
             if ii > 5 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <1e-3:
                 print(f'EM early stop at iter {ii}')
                 break
@@ -1209,7 +1209,7 @@ if True:
             vhat = vhat.detach()
             ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
             ll_traj.append(ll.item())
-            if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+            if torch.isnan(torch.tensor(ll_traj[-1])) : inp('nan happened')
             if ii > 5 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <1e-3:
                 print(f'EM early stop at iter {ii}')
                 break
@@ -1305,7 +1305,7 @@ if True:
     plt.legend(['EM', 'NEM'])
     plt.title('Correlation result for s')
 
-#%% 10db result as the initial 
+#%% 10db result as the initial to do the EM
     import itertools, time
     t = time.time()
     d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
@@ -1469,10 +1469,14 @@ if True:
             s = s + res[i][ii]
     print(s/2000)
 
+
+#%% Test 1 model muti-channel
+#TODO
+
+
 #%% Test 1 channel 1 model NEM
 if True:
-    "test rid 135100"
-    from unet.unet_model import UNetHalf8to100 as UNetHalf
+    "best ones rid 135100/125240/135110"
     from skimage.transform import resize
     import itertools
     import time
@@ -1530,7 +1534,7 @@ if True:
         graw = torch.stack([graw[:,None] for j in range(J)], dim=1)  # shape of [1,J,8,8]
         noise = torch.rand(J,1,8,8)
         for j in range(J):
-            noise[j,0] = awgn(graw[0,j,0], snr=20, seed=j) - graw[0,j,0]
+            noise[j,0] = awgn(graw[0,j,0], snr=10, seed=j) - graw[0,j,0]
         g = (graw + noise).cuda().requires_grad_()
         x = x.cuda()
 
@@ -1582,16 +1586,16 @@ if True:
 
         return shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze(), Rb.cpu()
     
-    location = f'../data/nem_ss/models/model_rid125240.pt'
-    single_data = True
+    location = f'../data/nem_ss/models/model_rid135110.pt'
+    single_data = False
     if single_data:
-        ind = 0
-        shat, Hhat, vhat, Rb = nem_func(awgn(x_all[ind], snr=0),seed=1,model=location)
+        ind = 70
+        shat, Hhat, vhat, Rb = nem_func(x_all[ind],seed=10,model=location)
         for i in range(3):
             plt.figure()
             plt.imshow(shat.squeeze().abs()[...,i]*ratio[ind])
             plt.colorbar()
-            # plt.title(f'Estimated sources {i+1}')
+            plt.title(f'Estimated sources {i+1}')
             plt.show()
         print('h correlation:', h_corr(h, Hhat.squeeze()))
         print('s correlation:', corr(shat.squeeze().abs(), s_all[ind]))
@@ -1615,12 +1619,6 @@ if True:
             res2.append(cc)
             print(f'finished {i} samples')
         print('Time used is ', time.time()-t)
-        torch.save([res, res2], 'res_nem_shat_hhat.pt')
+        torch.save([res, res2], 'res_nem_shat_hhat_rid135110.pt')
 
-#%%
-from unet.unet_model import UNet8to100
-m = UNet8to100(1,1)
-a = torch.rand(5,1,100,100)
-b = torch.rand(5,1,8,8)
-y = m(a, b)
 #%%
