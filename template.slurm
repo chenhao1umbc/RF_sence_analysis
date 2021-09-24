@@ -6,9 +6,6 @@
 
 echo "it begins"
 nvidia-smi
-# conda deactivate
-# source /nfs/rs/sjkim/users/chenhao1/miniconda3/etc/profile.d/conda.sh
-# source activate
 which conda
 python -u debug.py > debug.out 2>&1
 echo "done"
