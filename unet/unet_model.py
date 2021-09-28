@@ -339,7 +339,7 @@ class UNetHalf8to100_16_FC(nn.Module):
         self.n_ch = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
-        self.n_ch = 128
+        self.n_ch = 256
         
         self.fc = nn.Linear(9, 8)
         self.inc = DoubleConv(n_channels, self.n_ch)
@@ -372,8 +372,6 @@ class UNetHalf8to100_16_FC(nn.Module):
         x = self.reshape(x) 
         out = self.outc(x)
         return out
-
-
 
 
 class UNetHalf8to100_stack(nn.Module):
