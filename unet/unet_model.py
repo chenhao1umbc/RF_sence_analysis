@@ -673,10 +673,10 @@ class UNetHalf8to100_256_stack1(nn.Module):
 
         self.inc = DoubleConv(n_channels, self.n_ch)
         self.conv = nn.Sequential(
-            nn.Conv2d(self.n_ch, self.n_ch//2, kernel_size=3, padding=(1,0)),
+            nn.Conv2d(self.n_ch//2, self.n_ch//4, kernel_size=3, padding=(1,0)),
             nn.BatchNorm2d(self.n_ch//2),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(self.n_ch//2, self.n_ch, kernel_size=3, padding=1),
+            nn.Conv2d(self.n_ch//4, self.n_ch//2, kernel_size=3, padding=1),
             nn.BatchNorm2d(self.n_ch),
             nn.LeakyReLU(inplace=True) )
         self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
