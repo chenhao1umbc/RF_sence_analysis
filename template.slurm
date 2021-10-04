@@ -9,3 +9,4 @@ nvidia-smi
 which conda
 python -u debug.py > debug.out 2>&1
 echo "done"
+date
