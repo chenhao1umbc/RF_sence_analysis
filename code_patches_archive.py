@@ -1533,6 +1533,10 @@ if True:
         x = x.cuda()
 
         vhat = torch.randn(1, N, F, J).abs().to(torch.cdouble).cuda()
+        out = torch.randn(vhat.shape, device='cuda', dtype=torch.double)
+        for j in range(J):
+            out[..., j] = torch.sigmoid(model(g[:,j]).squeeze())
+        vhat.real = threshold(out)
         Hhat = torch.randn(1, M, J).to(torch.cdouble).cuda()*Hscale
         Rb = torch.ones(1, M).diag_embed().cuda().to(torch.cdouble)*Rbscale
         Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
