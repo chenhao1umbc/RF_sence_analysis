@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --mem=20000
 #SBATCH --gres=gpu:1
-#SBATCH --time=60:00:00
+#SBATCH --time=70:00:00
 #SBATCH --constraint=rtx_6000
 
 echo "it begins"
