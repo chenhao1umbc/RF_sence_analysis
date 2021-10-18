@@ -933,7 +933,7 @@ class UNetHalf8to100_lsbn(nn.Module):
         x = self.reshape(x) 
         x = self.outc(x)
         x = self.sig(x) # output shape of [nsamples,1, 100, 100]
-        return out
+        return x
 
 
 class UNetHalf8to100_256_stack1(nn.Module):
