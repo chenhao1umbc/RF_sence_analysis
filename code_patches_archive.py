@@ -1619,4 +1619,22 @@ if True:
         print('Time used is ', time.time()-t)
         torch.save([res, res2], 'res_nem_shat_hhat_rid135110.pt')
 
-#%%
+#%% check loss function values
+l = torch.load('../data/nem_ss/models/rid141103/loss_rid141103.pt')
+l = torch.tensor(l)
+n = 3
+c = []
+for epoch in range(len(l)):
+    if epoch > 10 :
+        ll = l[:epoch]
+        s1, s2 = sum(ll[epoch-2*n:epoch-n])/n, sum(ll[epoch-n:])/n
+        c.append( abs((s1-s2)/s1))
+        print(f'current epcoch-{epoch}: ', abs((s1-s2)/s1), s1, s2)
+        if s1 - s2 < 0 :
+            print('break-1')
+            break
+        if abs((s1-s2)/s1) < 5e-4 :
+            print(epoch)
+            print('break-2')
+            break
+plt.plot(c, '-x')
