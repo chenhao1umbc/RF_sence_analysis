@@ -67,3 +67,17 @@ plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
 plt.title('Correlation for h')
 
 #%%
+plt.figure()
+em1 = [0.78254, 0.90830, 0.96578, 0.99330, 0.99593]
+nem1 = [0.85142, 0.95064, 0.99069, 0.99865, 0.99991]
+em2 = [0.7955, 0.9053, 0.9521, 0.9544, 0.9513]
+# nem2 = [0.877197, 0.958912, 0.975978, 0.970579, 0.978831]
+nem2 = [0.904499, 0.972585, 0.990800, 0.998605, 0.999293]
+plt.plot([0, 5, 10, 20, 'inf'], em1, '--o', color='royalblue')
+plt.plot([0, 5, 10, 20, 'inf'], nem1, '--o', color='orange')
+plt.plot([0, 5, 10, 20, 'inf'], em2, '-x', color='royalblue')
+plt.plot([0, 5, 10, 20, 'inf'], nem2, '-x', color='orange')
+plt.ylabel('Averaged correlation result')
+plt.xlabel('SNR')
+plt.legend(['Old EM', 'Old NEM', 'New EM', 'New NEM'])
+plt.title('Merged plots')
