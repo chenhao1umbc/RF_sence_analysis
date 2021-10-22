@@ -1774,22 +1774,176 @@ if True:
         print('Time used is ', time.time()-t)
         torch.save([res, res2], 'res_10seed_rid141101_snr20.pt')
 
+#%% Test 2 channel model 1 model NEM, gamma=noise as label
+    from utils import *
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"
+    plt.rcParams['figure.dpi'] = 150
+    torch.set_printoptions(linewidth=160)
+    torch.set_default_dtype(torch.double)
+    from skimage.transform import resize
+    import itertools
+    import time
+    t = time.time()
+    d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
+    h = torch.tensor(h)
+    ratio = d.abs().amax(dim=(1,2,3))/3
+    x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
+    s_all = s.abs().permute(0,2,3,1) 
+
+    def corr(vh, v):
+        J = v.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for jj in permutes:
+            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+            s = 0
+            for j in range(J):
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+            r.append(s)
+        r = sorted(r, reverse=True)
+        return r[0]/J
+
+    def h_corr(h, hh):
+        J = h.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for p in permutes:
+            temp = hh[:,torch.tensor(p)]
+            s = 0
+            for j in range(J):
+                dino = h[:,j].norm() * temp[:, j].norm()
+                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                s = s + nume/dino
+            r.append(s/J)
+        r = sorted(r, reverse=True)
+        return r[0].item()
+
+    def nem_func(x, J=3, Hscale=1, Rbscale=100, max_iter=501, seed=1, model=''):
+        torch.manual_seed(seed) 
+        if model == '':
+            print('A model is needed')
+
+        model = torch.load(model)
+        for param in model.parameters():
+            param.requires_grad_(False)
+        model.eval()
+
+        #%% EM part
+        "initial"        
+        N, F, M = x.shape
+        NF= N*F
+        xx = torch.tensor(resize(x[...,0].abs(), [8,8], order=1, preserve_range=True))
+        xx = (xx/xx.max())[None,None,...].cuda()  #standardization shape of [1, 1, 8, 8]
+        g = torch.load('../data/nem_ss/g_init.pt')  # shape of [J, 1, 8, 8]
+        g = g[None,...].cuda() # do not put requires_grad_ here
+        x = x.cuda()
+
+        vhat = torch.randn(1, N, F, J).abs().to(torch.cdouble).cuda()
+        outs = []
+        for j in range(J):
+            outs.append(torch.sigmoid(model(torch.cat((g[:,j], xx), dim=1))))
+        out = torch.cat(outs, dim=1).permute(0,2,3,1)
+        vhat.real = threshold(out)
+        Hhat = torch.randn(1, M, J).to(torch.cdouble).cuda()*Hscale
+        Rb = torch.ones(1, M).diag_embed().cuda().to(torch.cdouble)*Rbscale
+        Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
+        Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
+        Rx = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb # shape of [N,F,I,M,M]
+        g.requires_grad_()
+        optim_gamma = torch.optim.SGD([g], lr= 0.001)
+        ll_traj = []
+
+        for ii in range(max_iter): # EM iterations
+            "E-step"
+            W = Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() @ Rx.inverse()  # shape of [N, F, I, J, M]
+            shat = W.permute(2,0,1,3,4) @ x[...,None]
+            Rsshatnf = shat @ shat.transpose(-1,-2).conj() + Rs - (W@Hhat@Rs.permute(1,2,0,3,4)).permute(2,0,1,3,4)
+            Rsshat = Rsshatnf.sum([1,2])/NF # shape of [I, J, J]
+            Rxshat = (x[..., None] @ shat.transpose(-1,-2).conj()).sum((1,2))/NF # shape of [I, M, J]
+
+            "M-step"
+            Hhat = Rxshat @ Rsshat.inverse() # shape of [I, M, J]
+            Rb = Rxxhat - Hhat@Rxshat.transpose(-1,-2).conj() - \
+                Rxshat@Hhat.transpose(-1,-2).conj() + Hhat@Rsshat@Hhat.transpose(-1,-2).conj()
+            Rb = Rb.diagonal(dim1=-1, dim2=-2).diag_embed()
+            Rb.imag = Rb.imag - Rb.imag
+
+            # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
+            # vj.imag = vj.imag - vj.imag
+            outs = []
+            for j in range(J):
+                outs.append(torch.sigmoid(model(torch.cat((g[:,j], xx), dim=1))))
+            out = torch.cat(outs, dim=1).permute(0,2,3,1)
+            vhat.real = threshold(out)
+            loss = loss_func(vhat, Rsshatnf.cuda())
+            optim_gamma.zero_grad()   
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_([g], max_norm=1)
+            optim_gamma.step()
+            torch.cuda.empty_cache()
+            
+            "compute log-likelyhood"
+            vhat = vhat.detach()
+            ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
+            ll_traj.append(ll.item())
+            if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+            if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <5e-4:
+                print(f'EM early stop at iter {ii}')
+                break
+        return shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze(), Rb.cpu()
+
+    location = f'../data/nem_ss/models/model_rid141101.pt'
+    # location = f'../data/nem_ss/models/rid141103/model_rid141103_58.pt'
+    single_data = True
+    if single_data:
+        ind = 43
+        shat, Hhat, vhat, Rb = nem_func(x_all[ind],seed=10,model=location)
+        for i in range(3):
+            plt.figure()
+            plt.imshow(shat.squeeze().abs()[...,i]*ratio[ind])
+            plt.colorbar()
+            plt.title(f'Estimated sources {i+1}')
+            plt.show()
+        print('h correlation:', h_corr(h, Hhat.squeeze()))
+        print('s correlation:', corr(shat.squeeze().abs(), s_all[ind]))
+        
+        for i in range(3):
+            plt.figure()
+            plt.imshow(s_all[ind].squeeze().abs()[...,i])
+            plt.colorbar()
+            plt.title(f'GT sources {i+1}')
+            plt.show()
+        # sio.savemat('sshat_nem.mat', {'s':s_all[ind].squeeze().abs().numpy(),'s_nem':(shat.squeeze().abs()*ratio[ind]).numpy()})
+    else: # run a lot of samples
+        res, res2 = [], []
+        for i in range(100):
+            c, cc = [], []
+            for ii in range(10):
+                shat, Hhat, vhat, Rb = nem_func(awgn(x_all[i], snr=20),seed=ii,model=location)
+                c.append(corr(shat.squeeze().abs(), s_all[i]))
+                cc.append(h_corr(h, Hhat.squeeze()))
+            res.append(c)
+            res2.append(cc)
+            print(f'finished {i} samples')
+        print('Time used is ', time.time()-t)
+        torch.save([res, res2], 'res_10seed_rid141103_58_snr20.pt')
+
 #%% check loss function values
-l = torch.load('../data/nem_ss/models/rid141103/loss_rid141103.pt')
-l = torch.tensor(l)
-n = 3
-c = []
-for epoch in range(len(l)):
-    if epoch > 10 :
-        ll = l[:epoch]
-        s1, s2 = sum(ll[epoch-2*n:epoch-n])/n, sum(ll[epoch-n:])/n
-        c.append( abs((s1-s2)/s1))
-        print(f'current epcoch-{epoch}: ', abs((s1-s2)/s1), s1, s2)
-        if s1 - s2 < 0 :
-            print('break-1')
-            break
-        if abs((s1-s2)/s1) < 5e-4 :
-            print(epoch)
-            print('break-2')
-            break
-plt.plot(c, '-x')
+    l = torch.load('../data/nem_ss/models/rid141103/loss_rid141103.pt')
+    l = torch.tensor(l)
+    n = 3
+    c = []
+    for epoch in range(len(l)):
+        if epoch > 10 :
+            ll = l[:epoch]
+            s1, s2 = sum(ll[epoch-2*n:epoch-n])/n, sum(ll[epoch-n:])/n
+            c.append( abs((s1-s2)/s1))
+            print(f'current epcoch-{epoch}: ', abs((s1-s2)/s1), s1, s2)
+            if s1 - s2 < 0 :
+                print('break-1')
+                break
+            if abs((s1-s2)/s1) < 5e-4 :
+                print(epoch)
+                print('break-2')
+                break
+    plt.plot(c, '-x')
