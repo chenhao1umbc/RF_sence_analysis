@@ -1,32 +1,20 @@
-#%%
+#@title rid144002 similar to r140120 with batch norm before sigmoid inside, 150 epoch
 from utils import *
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-plt.rcParams['figure.dpi'] = 150
-torch.set_printoptions(linewidth=160)
-torch.set_default_dtype(torch.double)
-
-
-#%%
-#@title rid149200 sigmoid changed to relu+vj/vj.max
-from utils import *
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 100
 torch.set_printoptions(linewidth=160)
 torch.set_default_dtype(torch.double)
-from unet.unet_model import UNetHalf8to100_vjto1_3 as UNetHalf
+from unet.unet_model import UNetHalf8to100_256_bnsig as UNetHalf
 from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-rid = 149200 # running id
+rid = 144002 # running id
 fig_loc = '../data/nem_ss/figures/'
-mod_loc = '../data/nem_ss/models/'
 if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
     print('made a new folder')
     os.mkdir(fig_loc + f'rid{rid}/')
-    os.mkdir(mod_loc + f'rid{rid}/')
 fig_loc = fig_loc + f'rid{rid}/'
-mod_loc = mod_loc + f'rid{rid}/'
 
 I = 3000 # how many samples
 M, N, F, J = 3, 100, 100, 3
@@ -37,7 +25,7 @@ opts['n_ch'] = [2,1]
 opts['batch_size'] = 64
 opts['EM_iter'] = 201
 opts['lr'] = 0.001
-opts['n_epochs'] = 71
+opts['n_epochs'] = 150
 opts['d_gamma'] = 8 
 
 d = torch.load('../data/nem_ss/tr3kM3FT100.pt')
@@ -188,16 +176,5 @@ for epoch in range(opts['n_epochs']):
     plt.savefig(fig_loc + f'id{rid}_LossFun_epoch{epoch}')
 
     plt.close('all')  # to avoid warnings
-    torch.save(loss_tr, mod_loc +f'loss_rid{rid}.pt')
-    torch.save(model, mod_loc +f'model_rid{rid}_{epoch}.pt')
-    torch.save(Hhat, mod_loc +f'Hhat_rid{rid}_{epoch}.pt')    
-    if epoch >10 :
-        s1, s2 = sum(loss_tr[-6:-3])/3, sum(loss_tr[-3:])/3
-        if s1 - s2 < 0 :
-            print('break-1')
-            break
-        print(f'{epoch}-abs((s1-s2)/s1):', abs((s1-s2)/s1))
-        if abs((s1-s2)/s1) < 5e-4 :
-            print('break-2')
-            break
-
+    torch.save(model, f'model_rid{rid}.pt')
+    torch.save(Hhat, f'Hhat_rid{rid}.pt')
