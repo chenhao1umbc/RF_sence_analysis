@@ -1737,14 +1737,14 @@ if True:
                 print(f'EM early stop at iter {ii}')
                 break
 
-        return shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze(), Rb.cpu()
+        return shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze(), Rb.cpu(), ll_traj
 
     rid = 149000
     location = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_38.pt'
     single_data = False
     if single_data:
         ind = 43
-        shat, Hhat, vhat, Rb = nem_func(x_all[ind],seed=10,model=location)
+        shat, Hhat, vhat, Rb, loss = nem_func(x_all[ind],seed=10,model=location)
         for i in range(3):
             plt.figure()
             plt.imshow(shat.squeeze().abs()[...,i]*ratio[ind])
@@ -1760,7 +1760,11 @@ if True:
             plt.colorbar()
             plt.title(f'GT sources {i+1}')
             plt.show()
-        # sio.savemat('sshat_nem.mat', {'s':s_all[ind].squeeze().abs().numpy(),'s_nem':(shat.squeeze().abs()*ratio[ind]).numpy()})
+
+        plt.figure()
+        plt.plot(loss, '-x')
+        plt.title('loss value')
+        plt.show()
     else: # run a lot of samples
         res, res2 = [], []
         for i in range(100):
