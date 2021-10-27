@@ -1739,7 +1739,8 @@ if True:
 
         return shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze(), Rb.cpu()
 
-    location = f'../data/nem_ss/models/model_rid141101.pt'
+    rid = 149000
+    location = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_38.pt'
     single_data = False
     if single_data:
         ind = 43
