@@ -1890,8 +1890,11 @@ if True:
 
     shat, hhat, vhat = shv
     shat_all, hhat_all = torch.cat(shat).cpu(), torch.cat(hhat).cpu()
+    res_s = []
     for i in range(100):
-        print(corr(shat_all[i].squeeze().abs(), s_all[i]))
+        res_s.append(corr(shat_all[i].squeeze().abs(), s_all[i]))
+    print(sum(res_s)/len(res_s))
+
 #%% Test 2 channel model 1 model NEM, gamma=noise as label
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
