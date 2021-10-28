@@ -1770,14 +1770,14 @@ if True:
         for i in range(100):
             c, cc = [], []
             for ii in range(10):
-                shat, Hhat, vhat, Rb = nem_func(awgn(x_all[i], snr=20),seed=ii,model=location)
+                shat, Hhat, *_ = nem_func(awgn(x_all[i], snr=20),seed=ii,model=location)
                 c.append(corr(shat.squeeze().abs(), s_all[i]))
                 cc.append(h_corr(h, Hhat.squeeze()))
             res.append(c)
             res2.append(cc)
             print(f'finished {i} samples')
         print('Time used is ', time.time()-t)
-        torch.save([res, res2], 'res_10seed_rid141101_snr20.pt')
+        torch.save([res, res2], f'res_10seed_rid{rid}_snr20.pt')
 
 #%% Test 2 channel model 1 model NEM, with mini batch
     from utils import *
@@ -1786,6 +1786,7 @@ if True:
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
     from unet.unet_model import UNetHalf8to100_256_sig as UNetHalf
+    import itertools
     from datetime import datetime
     print('starting date time ', datetime.now())
     torch.manual_seed(1)
@@ -1793,8 +1794,8 @@ if True:
     I, J = 150, 3
     d, *_ = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
     ratio = d.abs().amax(dim=(1,2,3))/3
-    xval = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
-    data = Data.TensorDataset(xval[:I])
+    xte = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
+    data = Data.TensorDataset(xte[:I])
     data_test = Data.DataLoader(data, batch_size=64, drop_last=True)
     g = torch.load('../data/nem_ss/gtest_500.pt')
     gte = g[:I]/g[:I].amax(dim=[1,2])[...,None,None]  #standardization 
