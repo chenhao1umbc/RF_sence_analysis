@@ -1785,25 +1785,54 @@ if True:
     plt.rcParams['figure.dpi'] = 100
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
-    from unet.unet_model import UNetHalf8to100_256_sig as UNetHalf
     import itertools
+    from unet.unet_model import UNetHalf8to100_256_sig as UNetHalf
     from datetime import datetime
     print('starting date time ', datetime.now())
     torch.manual_seed(1)
 
-    I, J = 150, 3
-    d, *_ = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
+    I, J, bs = 150, 3, 64 # I should be larger than bs
+    d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
+    s_all, h = s.abs().permute(0,2,3,1), torch.tensor(h)
     ratio = d.abs().amax(dim=(1,2,3))/3
     xte = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
-    data = Data.TensorDataset(awgn_batch(xte[:I], snr=0))
-    data_test = Data.DataLoader(data, batch_size=64, drop_last=True)
+    data = Data.TensorDataset(xte[:I])
+    data_test = Data.DataLoader(data, batch_size=bs, drop_last=True)
     g = torch.load('../data/nem_ss/gtest_500.pt')
     gte = g[:I]/g[:I].amax(dim=[1,2])[...,None,None]  #standardization 
     gte = torch.cat([gte[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I_val,J,1,8,8]
     l = torch.load('../data/nem_ss/140100_lb.pt')
-    lb = l.repeat(64, 1, 1, 1, 1).cuda()
+    lb = l.repeat(bs, 1, 1, 1, 1).cuda()
 
-    def nem_minibatch_test(data, ginit, model, lb, seed=1):
+    def corr(vh, v):
+        J = v.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for jj in permutes:
+            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+            s = 0
+            for j in range(J):
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+            r.append(s)
+        r = sorted(r, reverse=True)
+        return r[0]/J
+
+    def h_corr(h, hh):
+        J = h.shape[-1]
+        r = [] 
+        permutes = list(itertools.permutations(list(range(J))))
+        for p in permutes:
+            temp = hh[:,torch.tensor(p)]
+            s = 0
+            for j in range(J):
+                dino = h[:,j].norm() * temp[:, j].norm()
+                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                s = s + nume/dino
+            r.append(s/J)
+        r = sorted(r, reverse=True)
+        return r[0].item()
+
+    def nem_minibatch_test(data, ginit, model, lb, bs, seed=1):
         torch.manual_seed(seed) 
         for param in model.parameters():
             param.requires_grad_(False)
@@ -1811,7 +1840,7 @@ if True:
 
         EM_iters = 501
         M, N, F, J = 3, 100, 100, 3
-        NF, I, batch_size = N*F, ginit.shape[0], 64
+        NF, I = N*F, ginit.shape[0]
 
         vtr = torch.randn(N, F, J).abs().to(torch.cdouble).repeat(I, 1, 1, 1)
         Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
@@ -1820,9 +1849,9 @@ if True:
         lv, s, h, v, ll_all = ([] for i in range(5)) 
         for i, (x,) in enumerate(data): # gamma [n_batch, 4, 4]
             #%% EM part
-            vhat = vtr[i*batch_size:(i+1)*batch_size].cuda()        
-            Rb = Rbtr[i*batch_size:(i+1)*batch_size].cuda()
-            g = ginit[i*batch_size:(i+1)*batch_size].cuda().requires_grad_()
+            vhat = vtr[i*bs:(i+1)*bs].cuda()        
+            Rb = Rbtr[i*bs:(i+1)*bs].cuda()
+            g = ginit[i*bs:(i+1)*bs].cuda().requires_grad_()
 
             x = x.cuda()
             optim_gamma = torch.optim.SGD([g], lr=0.001)
@@ -1881,19 +1910,22 @@ if True:
             h.append(Hhat)
             v.append(vhat)
             print(f'batch {i} is done')
-        return sum(lv)/len(lv), ll_all, (s, h, v)
+        return sum(lv)/len(lv), torch.cat(ll_all), (s, h, v)
 
     rid = 150000
     model = torch.load(f'../data/nem_ss/models/rid{rid}/model_rid{rid}_35.pt')
-    meanl, l_all, shv = nem_minibatch_test(data_test, gte, model, lb, seed=1)
+    meanl, l_all, shv = nem_minibatch_test(data_test, gte, model, lb, bs, seed=1)
     print('End date time ', datetime.now())
 
     shat, hhat, vhat = shv
     shat_all, hhat_all = torch.cat(shat).cpu(), torch.cat(hhat).cpu()
-    res_s = []
+    res_s, res_h = [], []
     for i in range(100):
         res_s.append(corr(shat_all[i].squeeze().abs(), s_all[i]))
+        res_h.append(h_corr(h, hhat_all[i].squeeze()))
     print(sum(res_s)/len(res_s))
+    print(sum(res_h)/len(res_h))
+
 
 #%% Test 2 channel model 1 model NEM, gamma=noise as label
     from utils import *
