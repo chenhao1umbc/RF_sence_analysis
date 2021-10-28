@@ -1718,7 +1718,7 @@ if True:
             # vj.imag = vj.imag - vj.imag
             outs = []
             for j in range(J):
-                outs.append(torch.sigmoid(model(torch.cat((g[:,j], lb[:,j]), dim=1))))
+                outs.append(model(torch.cat((g[:,j], lb[:,j]), dim=1)))
             out = torch.cat(outs, dim=1).permute(0,2,3,1)
             vhat.real = threshold(out)
             loss = loss_func(vhat, Rsshatnf.cuda())
