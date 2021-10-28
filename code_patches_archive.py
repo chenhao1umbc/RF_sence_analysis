@@ -1795,7 +1795,7 @@ if True:
     d, *_ = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
     ratio = d.abs().amax(dim=(1,2,3))/3
     xte = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
-    data = Data.TensorDataset(xte[:I])
+    data = Data.TensorDataset(awgn_batch(xte[:I], snr=0))
     data_test = Data.DataLoader(data, batch_size=64, drop_last=True)
     g = torch.load('../data/nem_ss/gtest_500.pt')
     gte = g[:I]/g[:I].amax(dim=[1,2])[...,None,None]  #standardization 
