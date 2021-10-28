@@ -1888,6 +1888,10 @@ if True:
     meanl, l_all, shv = nem_minibatch_test(data_test, gte, model, lb, seed=1)
     print('End date time ', datetime.now())
 
+    shat, hhat, vhat = shv
+    shat_all, hhat_all = torch.cat(shat).cpu(), torch.cat(hhat).cpu()
+    for i in range(100):
+        print(corr(shat_all[i].squeeze().abs(), s_all[i]))
 #%% Test 2 channel model 1 model NEM, gamma=noise as label
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
