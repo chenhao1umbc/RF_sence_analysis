@@ -81,3 +81,54 @@ plt.ylabel('Averaged correlation result')
 plt.xlabel('SNR')
 plt.legend(['Old EM', 'Old NEM', 'New EM', 'New NEM'])
 plt.title('Merged plots')
+
+#%%  rid150000_35
+plt.figure()
+plt.plot([0, 5, 10, 20, 'inf'], [0.7955, 0.9053, 0.9521, 0.9544, 0.9513], '-x')
+ss = [0.9151661591587187, 0.9641487953572089, 0.9856960356248871, 0.9977277628251509, 0.9997574770952526]
+plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
+
+plt.ylabel('Averaged correlation result')
+plt.xlabel('SNR')
+plt.legend(['EM Correlation for s', 'NEM Correlation for s'])
+plt.title('Correlation for s')
+
+plt.figure()
+plt.plot([0, 5, 10, 20, 'inf'], [0.967135, 0.971392, 0.978568, 0.976789, 0.980658], '-x')
+ss = [0.9996597122402164, 0.9996303066482091, 0.9994293296731978, 0.9995672830187705, 0.9998204659383773]
+plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
+plt.ylabel('Averaged correlation result')
+plt.xlabel('SNR')
+plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
+plt.title('Correlation for h')
+
+#%%  rid141104_58  low snr is bad
+plt.figure()
+plt.plot([0, 5, 10, 20, 'inf'], [0.7955, 0.9053, 0.9521, 0.9544, 0.9513], '-x')
+ss = [0.631, 0.916, 0.9903, 0.995, 0.997]
+plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
+
+plt.ylabel('Averaged correlation result')
+plt.xlabel('SNR')
+plt.legend(['EM Correlation for s', 'NEM Correlation for s'])
+plt.title('Correlation for s')
+
+#%%  rid145002_57
+plt.figure()
+plt.plot([0, 5, 10, 20, 'inf'], [0.7955, 0.9053, 0.9521, 0.9544, 0.9513], '-x')
+ss = [0.8783880123971055, 0.9338809976629762, 0.9663077043350395, 0.9852282607157516, 0.9871739072054928]
+plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
+
+plt.ylabel('Averaged correlation result')
+plt.xlabel('SNR')
+plt.legend(['EM Correlation for s', 'NEM Correlation for s'])
+plt.title('Correlation for s')
+
+plt.figure()
+plt.plot([0, 5, 10, 20, 'inf'], [0.967135, 0.971392, 0.978568, 0.976789, 0.980658], '-x')
+ss = [0.9933938175362463, 0.9980773181036969, 0.9998076659451002, 0.9999453892450755, 0.9998789322102434]
+plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
+plt.ylabel('Averaged correlation result')
+plt.xlabel('SNR')
+plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
+plt.title('Correlation for h')
