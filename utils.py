@@ -301,7 +301,7 @@ def val_run(data, ginit, model, lb, seed=1):
             if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
             if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <5e-4:
                 print(f'EM early stop at iter {ii}')
-            break
+                break
         lv.append(ll.item())
         print(f'val batch {i} is done')
     return sum(lv)/len(lv)
