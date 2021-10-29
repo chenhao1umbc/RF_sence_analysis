@@ -22,7 +22,7 @@ plt.xlabel('Sample index')
 plt.title('NEM correlation result for s')
 plt.show()
 
-#%% plot s
+#%% plot s -- 10 seed
 location = '../data/nem_ss/nem_res/'
 plt.figure()
 #res, _ = torch.load(location + f'res_sh_10seed_snr{i}.pt') # s, h NEM
@@ -43,7 +43,7 @@ plt.xlabel('SNR')
 plt.legend(['EM Correlation for s', 'NEM Correlation for s'])
 plt.title('Correlation for s')
 
-#%% plot h
+#%% plot h -- 10 seed
 location = '../data/nem_ss/nem_res/'
 plt.figure()
 ss = []
@@ -66,13 +66,13 @@ plt.xlabel('SNR')
 plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
 plt.title('Correlation for h')
 
-#%%
+#%%  3 model vs 1 model 
 plt.figure()
 em1 = [0.78254, 0.90830, 0.96578, 0.99330, 0.99593]
 nem1 = [0.85142, 0.95064, 0.99069, 0.99865, 0.99991]
 em2 = [0.7955, 0.9053, 0.9521, 0.9544, 0.9513]
-# nem2 = [0.877197, 0.958912, 0.975978, 0.970579, 0.978831]
-nem2 = [0.904499, 0.972585, 0.990800, 0.998605, 0.999293]
+# nem2 = [0.877197, 0.958912, 0.975978, 0.970579, 0.978831]  # 140100_52
+nem2 = [0.904499, 0.972585, 0.990800, 0.998605, 0.999293]  # 140100_48
 plt.plot([0, 5, 10, 20, 'inf'], em1, '--o', color='royalblue')
 plt.plot([0, 5, 10, 20, 'inf'], nem1, '--o', color='orange')
 plt.plot([0, 5, 10, 20, 'inf'], em2, '-x', color='royalblue')
