@@ -113,7 +113,7 @@ plt.xlabel('SNR')
 plt.legend(['EM Correlation for s', 'NEM Correlation for s'])
 plt.title('Correlation for s')
 
-#%%  rid145002_57
+#%%  rid145002_57 -- not as good as rid150000_35
 plt.figure()
 plt.plot([0, 5, 10, 20, 'inf'], [0.7955, 0.9053, 0.9521, 0.9544, 0.9513], '-x')
 ss = [0.8783880123971055, 0.9338809976629762, 0.9663077043350395, 0.9852282607157516, 0.9871739072054928]
