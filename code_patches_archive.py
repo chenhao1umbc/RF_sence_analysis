@@ -1046,6 +1046,60 @@ if True:
     s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
     torch.save((x[3500:], s, h), f'test500M3FT{FT}_xsh.pt')
 
+#%% prepare the 6-class real data
+    "raw data processing"
+    FT = 100
+    var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
+    data = {}
+    for i in range(6):
+        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
+        dd = (np.sum((abs(temp['x'])**2), 1)**0.5).reshape(2000, 1)
+        # dd = np.abs(temp['x']).max(axis=1).reshape(2000, 1)
+        data[i] = temp['x'] / dd  # normalized very sample to 1
+
+    M, J = 6, 6 # M is number of Channel, J is the number of sources
+    np.set_printoptions(linewidth=150)
+    "To generate 5000 mixture samples"
+    theta = np.array([15, 45, 75, -15, -45, -75])*np.pi/180  #len=J, signal AOAs  
+    h = np.exp(-1j*np.pi*np.arange(0, M)[:,None]@np.sin(theta)[None, :])  # shape of [M, J]
+
+    np.random.seed(0)
+    d1 = 0
+    for i in range(J):
+        np.random.shuffle(data[i])
+    for i in range(J):
+        d1 = d1 + h[:,i][:,None]@data[i][:,None,:] 
+
+    np.random.seed(1)
+    d2 = 0
+    for i in range(J):
+        np.random.shuffle(data[i])
+    for i in range(J):
+        d2 = d2 + h[:,i][:,None]@data[i][:,None,:] 
+
+    data_pool = np.concatenate((d1, d2), axis=0)  #[I,M,time_len]
+    *_, Z = stft(data_pool, fs=4e7, nperseg=FT, boundary=None)
+    x = torch.tensor(np.roll(Z, FT//2, axis=2))  # roll nperseg//2
+    plt.figure()
+    plt.imshow(x[0,0].abs().log(), aspect='auto', interpolation='None')
+    plt.title(f'One example of {J}-component mixture')
+    torch.save(x[:3000], f'tr3kM{M}FT{FT}.pt')
+
+    "get s and h for the val and test data"
+    s = {}
+    for i in range(J):
+        *_, Z = stft(data[i][1000:1500], fs=4e7, nperseg=FT, boundary=None)
+        s[i] = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    s = torch.tensor(np.stack((s[i] for i in range(J)), axis=1))  #[I, J, F, T]
+    torch.save((x[3000:3500], s, h), f'val500M{M}FT{FT}_xsh.pt')
+
+    s = {}
+    for i in range(J):
+        *_, Z = stft(data[0][1500:], fs=4e7, nperseg=FT, boundary=None)
+        s[i] = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    s = torch.tensor(np.stack((s[i] for i in range(J)), axis=1))  #[I, J, F, T]
+    torch.save((x[3500:], s, h), f'test500M{M}FT{FT}_xsh.pt')
+
 #%% Test EM on real data
     import itertools
     d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
@@ -1925,7 +1979,6 @@ if True:
         res_h.append(h_corr(h, hhat_all[i].squeeze()))
     print(sum(res_s)/len(res_s))
     print(sum(res_h)/len(res_h))
-
 
 #%% Test 2 channel model 1 model NEM, gamma=noise as label
     from utils import *
