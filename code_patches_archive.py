@@ -1095,7 +1095,7 @@ if True:
 
     s = {}
     for i in range(J):
-        *_, Z = stft(data[0][1500:], fs=4e7, nperseg=FT, boundary=None)
+        *_, Z = stft(data[i][1500:], fs=4e7, nperseg=FT, boundary=None)
         s[i] = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
     s = torch.tensor(np.stack((s[i] for i in range(J)), axis=1))  #[I, J, F, T]
     torch.save((x[3500:], s, h), f'test500M{M}FT{FT}_xsh.pt')
