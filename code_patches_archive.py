@@ -2016,11 +2016,11 @@ if True:
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
-        for jj in permutes:
-            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+        for p in permutes:
+            temp = vh[:,:,torch.tensor(p)]
             s = 0
             for j in range(J):
-                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
             r.append(s)
         r = sorted(r, reverse=True)
         return r[0]/J
