@@ -236,15 +236,15 @@ def awgn_batch(xx, snr, seed=0):
             x[i,:,:,j] = x[i,:,:,j] + noise       
     return  x
 
-def val_run(data, ginit, model, lb, seed=1):
+def val_run(data, ginit, model, lb, MJbs=(3,3,64), seed=1):
     torch.manual_seed(seed) 
     for param in model.parameters():
         param.requires_grad_(False)
     model.eval()
 
-    EM_iters = 201
-    M, N, F, J = 3, 100, 100, 3
-    NF, I, batch_size = N*F, ginit.shape[0], 64
+    EM_iters, N, F = 201, 100, 100
+    M, J, bs = MJbs
+    NF, I = N*F, ginit.shape[0]
 
     vtr = torch.randn(N, F, J).abs().to(torch.cdouble).repeat(I, 1, 1, 1)
     Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
@@ -253,9 +253,9 @@ def val_run(data, ginit, model, lb, seed=1):
     lv = []
     for i, (x,) in enumerate(data): # gamma [n_batch, 4, 4]
         #%% EM part
-        vhat = vtr[i*batch_size:(i+1)*batch_size].cuda()        
-        Rb = Rbtr[i*batch_size:(i+1)*batch_size].cuda()
-        g = ginit[i*batch_size:(i+1)*batch_size].cuda().requires_grad_()
+        vhat = vtr[i*bs:(i+1)*bs].cuda()        
+        Rb = Rbtr[i*bs:(i+1)*bs].cuda()
+        g = ginit[i*bs:(i+1)*bs].cuda().requires_grad_()
 
         x = x.cuda()
         optim_gamma = torch.optim.SGD([g], lr=0.001)
@@ -305,7 +305,6 @@ def val_run(data, ginit, model, lb, seed=1):
         lv.append(ll.item())
         print(f'val batch {i} is done')
     return sum(lv)/len(lv)
-
 
 #%%
 if __name__ == '__main__':

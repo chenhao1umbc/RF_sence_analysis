@@ -2308,3 +2308,45 @@ if True:
                 print('break-2')
                 break
     plt.plot(c, '-x')
+
+#%% validation value check
+    from utils import *
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"
+    plt.rcParams['figure.dpi'] = 100
+    torch.set_printoptions(linewidth=160)
+    torch.set_default_dtype(torch.double)
+    import itertools
+    from unet.unet_model import UNetHalf8to100_256_sig as UNetHalf
+    from datetime import datetime
+    print('starting date time ', datetime.now())
+    torch.manual_seed(1)
+
+    I, J, bs = 130, 6, 32 # I should be larger than bs
+    d, s, h = torch.load('../data/nem_ss/val500M6FT100_xsh.pt')
+    s_all, h = s.abs().permute(0,2,3,1), torch.tensor(h)
+    ratio = d.abs().amax(dim=(1,2,3))/3
+    xte = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
+    xte = awgn_batch(xte[:I], snr=1000)
+    data = Data.TensorDataset(xte)
+    data_test = Data.DataLoader(data, batch_size=bs, drop_last=True)
+
+    from skimage.transform import resize
+    gte = torch.tensor(resize(xte[...,0].abs(), [I,8,8], order=1, preserve_range=True ))
+    gte = gte[:I]/gte[:I].amax(dim=[1,2])[...,None,None]  #standardization 
+    gte = torch.cat([gte[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I_val,J,1,8,8]
+    l = torch.load('../data/nem_ss/lb_c6_J188.pt')
+    lb = l.repeat(bs, 1, 1, 1, 1).cuda()
+
+    rid = 160001
+    ll_all = []
+    for i in range(42):
+        model = torch.load(f'../data/nem_ss/models/rid{rid}/model_rid{rid}_{i}.pt')
+        ll = val_run(data_test, gte, model, lb, [6,6,32], seed=1)
+        ll_all.append(ll)
+        print(ll)
+        plt.figure()
+        plt.title('validation likelihood till epoch {i}')
+        plt.plot(ll_all, '-or')
+        plt.savefig(f'id{rid} validation likelihood')
+        plt.close()
+    print('End date time ', datetime.now())
