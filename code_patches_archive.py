@@ -1985,8 +1985,6 @@ if True:
     print(sum(res_h)/len(res_h))
 
 #%% Test 2 channel model 1 model NEM, with mini batch for 6 classes
-
-#%% Test 2 channel model 1 model NEM, with mini batch for 6 classes
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
     plt.rcParams['figure.dpi'] = 100
