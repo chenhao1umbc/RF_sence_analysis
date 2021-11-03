@@ -1174,8 +1174,8 @@ if True:
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
-        for jj in permutes:
-            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+        for p in permutes:
+            temp = vh[..., torch.tensor(p)]
             s = 0
             for j in range(J):
                 s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
@@ -1364,6 +1364,7 @@ if True:
     t = time.time()
     d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
     h = torch.tensor(h)
+    J = h.shape[-1]
     ratio = d.abs().amax(dim=(1,2,3))/3
     x = (d/ratio[:,None,None,None]).permute(0,2,3,1)
     s_all = s.abs().permute(0,2,3,1)
@@ -1372,8 +1373,8 @@ if True:
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
-        for jj in permutes:
-            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+        for p in permutes:
+            temp = vh[..., torch.tensor(p)]
             s = 0
             for j in range(J):
                 s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
@@ -1494,8 +1495,8 @@ if True:
 
     # samples = 100
     # seeds = 20
-    # hh_all = torch.rand(samples, seeds, 3, 3, dtype=torch.cdouble)
-    # vh_all = torch.rand(samples, seeds, 100, 100, 3, dtype=torch.cdouble)
+    # hh_all = torch.rand(samples, seeds, J, J, dtype=torch.cdouble)
+    # vh_all = torch.rand(samples, seeds, 100, 100, J, dtype=torch.cdouble)
     # for i in range(samples):
     #     for ii in range(seeds):
     #         shat, hh_all[i, ii], vh_all[i, ii], Rb = em_func(awgn(x[i], snr=10), seed=ii)
@@ -1507,8 +1508,8 @@ if True:
     res, res2 = [], []
     for i in range(100):
         c, cc = [], []
-        for ii in range(20):
-            shat, Hhat, vhat, Rb = em_func_mod(awgn(x[i], snr=20), \
+        for ii in range(10):
+            shat, Hhat, vhat, Rb = em_func_mod(awgn(x[i], snr=20), J=6\
                 v_init=vh_all[i,ii], h_init=hh_all[i,ii], seed=ii)
             c.append(corr(shat.squeeze().abs(), s_all[i]))
             cc.append(h_corr(h, Hhat))
@@ -2345,7 +2346,7 @@ if True:
         ll_all.append(ll)
         print(ll)
         plt.figure()
-        plt.title('validation likelihood till epoch {i}')
+        plt.title(f'validation likelihood till epoch {i}')
         plt.plot(ll_all, '-or')
         plt.savefig(f'id{rid} validation likelihood')
         plt.close()
