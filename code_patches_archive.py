@@ -1509,7 +1509,7 @@ if True:
     for i in range(100):
         c, cc = [], []
         for ii in range(10):
-            shat, Hhat, vhat, Rb = em_func_mod(awgn(x[i], snr=20), J=6\
+            shat, Hhat, vhat, Rb = em_func_mod(awgn(x[i], snr=20), J=6,\
                 v_init=vh_all[i,ii], h_init=hh_all[i,ii], seed=ii)
             c.append(corr(shat.squeeze().abs(), s_all[i]))
             cc.append(h_corr(h, Hhat))
