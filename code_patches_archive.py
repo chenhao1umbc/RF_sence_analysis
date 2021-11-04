@@ -1992,7 +1992,6 @@ if True:
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
     import itertools
-    from unet.unet_model import UNetHalf8to100_256_sig as UNetHalf
     from datetime import datetime
     print('starting date time ', datetime.now())
     torch.manual_seed(1)
@@ -2445,7 +2444,7 @@ if True:
                 l = -(np.pi*mydet(Rx)).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
                 ll = l.sum().real
                 Rx = Rxperm
-                print(f'iter ii')
+
                 ll_traj.append(ll.item())
                 if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
                 if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <5e-4:

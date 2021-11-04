@@ -138,7 +138,7 @@ if True:
     plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
     plt.title('Correlation for h')
 
-#%%  rid160000_41 6 classes vs EM raw random
+#%% rid160000_41 6 classes vs EM raw random
     plt.figure()
     plt.plot([0, 5, 10, 20, 'inf'], [0.6008424959295375, 0.7248948191915779, 0.7780298439919326, 0.7898476635307224, 0.7458360596326318], '-x')
     ss = [0.618957818305481, 0.7868766088411929, 0.8562572809329362, 0.9007027679035039, 0.9072986763470671]
@@ -157,3 +157,25 @@ if True:
     plt.xlabel('SNR')
     plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
     plt.title('Correlation for h')
+
+#%% rid160100_33 6 classes vs EM boost random
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], [0.6351, 0.7451, 0.7928, 0.8059, 0.8109 ], '-x')
+    ss = [0.6708, 0.8032, 0.8690, 0.9151, 0.9218]
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
+    # plt.ylim([0.5, 1])
+    plt.ylabel('Averaged correlation result')
+    plt.xlabel('SNR')
+    plt.legend(['EM Correlation for s', 'NEM Correlation for s'])
+    plt.title('Correlation for s')
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], [0.8520, 0.8616, 0.8671, 0.8682, 0.8755], '-x')
+    ss = [0.8721, 0.8910, 0.9007, 0.9092, 0.9099]
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
+    plt.ylabel('Averaged correlation result')
+    plt.xlabel('SNR')
+    # plt.ylim([0.5, 1])
+    plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
+    plt.title('Correlation for h')
+#%%
