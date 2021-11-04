@@ -1227,6 +1227,7 @@ class UNetHalf8to100_vjto1_5(nn.Module):
         out = x/x.detach().amax(keepdim=True, dim=(-1,-2))
         return out
 
+
 class UNetHalf8to100_vjto1_6(nn.Module):
     "16 layers here"
     def __init__(self, n_channels, n_classes, bilinear=False):

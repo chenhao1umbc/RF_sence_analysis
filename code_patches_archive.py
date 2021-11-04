@@ -2351,3 +2351,121 @@ if True:
         plt.savefig(f'id{rid} validation likelihood')
         plt.close()
     print('End date time ', datetime.now())
+
+#%% generate g from validation data for classification
+    from utils import *
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    plt.rcParams['figure.dpi'] = 100
+    torch.set_printoptions(linewidth=160)
+    torch.set_default_dtype(torch.double)
+    import itertools
+    from datetime import datetime
+    print('starting date time ', datetime.now())
+    torch.manual_seed(1)
+
+    I, J, bs = 130, 6, 32 # I should be larger than bs
+    d, s, h = torch.load('../data/nem_ss/val500M6FT100_xsh.pt')
+    s_all, h = s.abs().permute(0,2,3,1), torch.tensor(h)
+    ratio = d.abs().amax(dim=(1,2,3))/3
+    xte = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
+    xte = awgn_batch(xte[:I], snr=1000)
+    data = Data.TensorDataset(xte)
+    data_val = Data.DataLoader(data, batch_size=bs, drop_last=True)
+
+    from skimage.transform import resize
+    gte = torch.tensor(resize(xte[...,0].abs(), [I,8,8], order=1, preserve_range=True ))
+    gte = gte[:I]/gte[:I].amax(dim=[1,2])[...,None,None]  #standardization 
+    gte = torch.cat([gte[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I_val,J,1,8,8]
+    l = torch.load('../data/nem_ss/lb_c6_J188.pt')
+    lb = l.repeat(bs, 1, 1, 1, 1).cuda()
+
+    def nem_val_gtr(data, ginit, model, lb, bs, seed=1):
+        torch.manual_seed(seed) 
+        for param in model.parameters():
+            param.requires_grad_(False)
+        model.eval()
+
+        EM_iters = 501
+        M, N, F, J = 6, 100, 100, 6
+        NF, I = N*F, ginit.shape[0]
+
+        vtr = torch.randn(N, F, J).abs().to(torch.cdouble).repeat(I, 1, 1, 1)
+        Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
+        Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*100
+
+        lv, s, h, v, ll_all, g_all = ([] for i in range(6)) 
+        for i, (x,) in enumerate(data): # gamma [n_batch, 4, 4]
+            #%% EM part
+            vhat = vtr[i*bs:(i+1)*bs].cuda()        
+            Rb = Rbtr[i*bs:(i+1)*bs].cuda()
+            g = ginit[i*bs:(i+1)*bs].cuda().requires_grad_()
+
+            x = x.cuda()
+            optim_gamma = torch.optim.SGD([g], lr=0.001)
+            Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((1,2))/NF
+            Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
+            Rx = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb # shape of [N,F,I,M,M]
+            ll_traj = []
+
+            for ii in range(EM_iters):
+                "E-step"
+                W = Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() @ Rx.inverse()  # shape of [N, F, I, J, M]
+                shat = W.permute(2,0,1,3,4) @ x[...,None]
+                Rsshatnf = shat @ shat.transpose(-1,-2).conj() + Rs - (W@Hhat@Rs.permute(1,2,0,3,4)).permute(2,0,1,3,4)
+                Rsshat = Rsshatnf.sum([1,2])/NF # shape of [I, J, J]
+                Rxshat = (x[..., None] @ shat.transpose(-1,-2).conj()).sum((1,2))/NF # shape of [I, M, J]
+
+                "M-step"
+                Hhat = Rxshat @ Rsshat.inverse() # shape of [I, M, J]
+                # Hhat = (Rxshat @ Rsshat.inverse()).mean(0) # shape of [M, J]
+                Rb = Rxxhat - Hhat@Rxshat.transpose(-1,-2).conj() - \
+                    Rxshat@Hhat.transpose(-1,-2).conj() + Hhat@Rsshat@Hhat.transpose(-1,-2).conj()
+                Rb = Rb.diagonal(dim1=-1, dim2=-2).diag_embed()
+                Rb.imag = Rb.imag - Rb.imag
+
+                # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
+                # vj.imag = vj.imag - vj.imag
+                outs = []
+                for j in range(J):
+                    outs.append(model(torch.cat((g[:,j], lb[:,j]), dim=1)))
+                out = torch.cat(outs, dim=1).permute(0,2,3,1)
+                vhat.real = threshold(out)
+                loss = loss_func(vhat, Rsshatnf.cuda())
+                optim_gamma.zero_grad()   
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_([g], max_norm=1)
+                optim_gamma.step()
+                torch.cuda.empty_cache()
+                
+                "compute log-likelyhood"
+                vhat = vhat.detach()
+                Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
+                Rxperm = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb 
+                Rx = Rxperm.permute(2,0,1,3,4) # shape of [I, N, F, M, M]
+                l = -(np.pi*mydet(Rx)).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
+                ll = l.sum().real
+                Rx = Rxperm
+                print(f'iter ii')
+                ll_traj.append(ll.item())
+                if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+                if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <5e-4:
+                    print(f'EM early stop at iter {ii}')
+                    break
+            ll_all.append(l.sum((-1, -2)).cpu().real)
+            lv.append(ll.item())
+            s.append(shat)
+            h.append(Hhat)
+            v.append(vhat)
+            g_all.append(g.detach())
+            print(f'batch {i} is done')
+        return g_all, torch.cat(ll_all), (s, h, v)
+
+    rid = 160001
+    model = torch.load(f'../data/nem_ss/models/rid{rid}/model_rid{rid}_41.pt')
+    gval, l_all, shv = nem_val_gtr(data_val, gte, model, lb, bs, seed=1)
+    print('End date time ', datetime.now())
+
+    shat, hhat, vhat = shv
+    shat_all, hhat_all, g_all = torch.cat(shat).cpu(), torch.cat(hhat).cpu(), torch.cat(gval).cpu()
+    torch.save(g_all , 'g_all.pt')
+    print('done with g_all')
