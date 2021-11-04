@@ -1214,7 +1214,18 @@ class UNetHalf8to100_vjto1_5(nn.Module):
             nn.LeakyReLU(inplace=True))
         self.outc = OutConv(32, n_classes)
         self.sig = nn.Sigmoid()
-
+    
+    def forward(self, x):
+        x = self.inc(x)
+        x = self.up1(x)
+        x = self.up2(x)
+        x = self.up3(x)
+        x = self.up4(x)
+        x = self.reshape(x) 
+        x = self.outc(x)
+        x = self.sig(x)
+        out = x/x.detach().amax(keepdim=True, dim=(-1,-2))
+        return out
 
 class UNetHalf8to100_vjto1_6(nn.Module):
     "16 layers here"
