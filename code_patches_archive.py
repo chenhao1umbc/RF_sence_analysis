@@ -2564,9 +2564,10 @@ if True:
     rid = 160100
     location = f'model_rid{rid}_33.pt'
     ind = 10 # which sample to test
-    "prep data"
-    d = 1
     which_class = [0, 2,  5]
+
+    "prep data"
+    d = 0    
     for i in which_class:
         d = d + h[:, i, None] @ s[ind, i].reshape(1, N*F)
     d = d.reshape(M, N, F).permute(1,2,0)
