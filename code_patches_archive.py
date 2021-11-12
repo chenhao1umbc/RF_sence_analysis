@@ -2564,7 +2564,7 @@ if True:
     rid = 160100
     location = f'model_rid{rid}_33.pt'
     ind = 10 # which sample to test
-    which_class = [0, 2,  5]
+    J, which_class = 6, [0, 2, 5]  # J is NO. of class you guess, which_class is really there
 
     "prep data"
     d = 0    
@@ -2572,7 +2572,7 @@ if True:
         d = d + h[:, i, None] @ s[ind, i].reshape(1, N*F)
     d = d.reshape(M, N, F).permute(1,2,0)
 
-    shv, g, Rb, loss = nem_func_less(d, J=6, seed=10, model=location)
+    shv, g, Rb, loss = nem_func_less(d, J=J, seed=10, model=location)
     shat, Hhat, vhat = shv
     for i in range(6):
         plt.figure()
