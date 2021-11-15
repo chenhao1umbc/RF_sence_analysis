@@ -2567,11 +2567,11 @@ if True:
     J, which_class = 6, [0, 2, 5]  # J is NO. of class you guess, which_class is really there
 
     "prep data"
-    d = 0    
-    for i in which_class:
-        d = d + h[:, i, None] @ s[ind, i].reshape(1, N*F)
+    for i, v in which_class:
+        if i == 0 : d = 0
+        d = d + h[:, v, None] @ s[ind, v].reshape(1, N*F)
     d = d.reshape(M, N, F).permute(1,2,0)
-
+    
     shv, g, Rb, loss = nem_func_less(d, J=J, seed=10, model=location)
     shat, Hhat, vhat = shv
     for i in range(6):
