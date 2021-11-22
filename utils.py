@@ -48,7 +48,7 @@ def loss_func(vhat, Rsshatnf, lamb=0):
     return loss.sum()
 
 def log_likelihood(x, vhat, Hhat, Rb, lamb=0):
-    """ Hhat shape of [I, M, J]
+    """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
         vhat shape of [I, N, F, J]
         Rb shape of [I, M, M]
         x shape of [I, N, F, M]
