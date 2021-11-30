@@ -2832,3 +2832,42 @@ if True:
         res.append(r)
         torch.save(res, 'Hhat_2-6comb_res.pt')
     print('done', time.time()-t)
+
+#%% Use H to do classification, if ground truth h is available
+    from utils import *
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    plt.rcParams['figure.dpi'] = 150
+    torch.set_printoptions(linewidth=160)
+    torch.set_default_dtype(torch.double)
+    import itertools
+    import time
+    t = time.time()
+    d, s, h = torch.load('../data/nem_ss/test500M6FT100_xsh.pt')
+    h, N, F, M = torch.tensor(h), s.shape[-1], s.shape[-2], 6
+
+    def hcorr(hi, hh):
+        r = []
+        for i in range(6):
+            n = hi @ hh[:,i].conj()
+            d = hi.norm() * hh[:,i].norm()
+            r.append(n.abs()/d)
+        return max(r)
+
+    n_comb = 2
+    comb = list(itertools.combinations(range(6), n_comb))
+    lb = torch.tensor(comb)
+    lbs = lb.unsqueeze(1).repeat(1,100,1).reshape(lb.shape[0]*100, n_comb)
+    hall = torch.load(f'../data/nem_ss/nem_res/Hhat_{n_comb}comb_res.pt')
+    acc = 0
+    for i in range(len(hall)):
+        hh = hall[i].squeeze()
+        res = []
+        for wc in range(6):
+            res.append(hcorr(h[:,wc], hh))
+        _, lb_hat = torch.topk(torch.tensor(res), n_comb)
+
+        for ii in range(n_comb):
+            if lb_hat[ii] in lbs[i]:
+                acc += 1
+    print(acc/len(hall)/n_comb)
+    "if ground truth h is konwn, 2~0.97, 3~0.92983, 4~0.937833, 5~0.95766, 6~1.00 and 1~1.00 of coursce"
