@@ -2135,7 +2135,7 @@ if True:
     print(sum(res_s)/len(res_s))
     print(sum(res_h)/len(res_h))
 
-#%% Test 2 channel model 1 model NEM, gamma=noise as label
+#%% Test 2 channel model 1 model NEM, gamma=noise as label -- abandoned
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
     plt.rcParams['figure.dpi'] = 150
@@ -2469,7 +2469,7 @@ if True:
     torch.save(g_all , 'g_all.pt')
     print('done with g_all')
 
-#%% test 3-mixture from 6 mixture model
+#%% NEM test 3-mixture from 6 mixture model
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
     plt.rcParams['figure.dpi'] = 150
