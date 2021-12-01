@@ -2567,7 +2567,7 @@ if True:
     J, which_class = 6, [0, 2, 5]  # J is NO. of class you guess, which_class is really there
 
     "prep data"
-    for i, v in which_class:
+    for i, v in enumerate(which_class):
         if i == 0 : d = 0
         d = d + h[:, v, None] @ s[ind, v].reshape(1, N*F)
     d = d.reshape(M, N, F).permute(1,2,0)
