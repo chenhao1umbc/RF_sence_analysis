@@ -2871,3 +2871,51 @@ if True:
                 acc += 1
     print(acc/len(hall)/n_comb)
     "if ground truth h is konwn, 2~0.97, 3~0.92983, 4~0.937833, 5~0.95766, 6~1.00 and 1~1.00 of coursce"
+
+#%% Use H to do classification, using training h 
+    from utils import *
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    plt.rcParams['figure.dpi'] = 150
+    torch.set_printoptions(linewidth=160)
+    torch.set_default_dtype(torch.double)
+    import itertools
+    import time
+    t = time.time()
+    s_all, h_all, v_all= torch.load('../data/nem_ss/shv_tr3k_M6_rid160100.pt')
+    s0, h0 = s_all[0].squeeze(), h_all[0]
+    "In s[0] from 0~31: 3,4,8,13,14,15,29,31 are class4 then class5, others are 5,4"
+    "also, 5,6,7,8, 11, 12,23, 26, 30 really bad"
+    # idx1 = torch.tensor([0,5,2,1,4,3]) # for others -- 0,3,2,5,4,1
+    # idx2 = torch.tensor([0,5,2,1,3,4]) # for 3,4,8,13,14,15,29,31 -- 0,3,2,4,5,1
+
+    def get_lb(h0, hh):
+        res = torch.zeros(30,6,6)
+        for i in range(3):
+            if i in [3,4,8,13,14,15,29,31]:
+                idx = torch.tensor([0,5,2,1,3,4])
+            else:
+                idx = torch.tensor([0,5,2,1,4,3])
+            h = h0[0][:, idx]
+            for d1 in range(6):
+                hi = h[:, d1]
+                for d2 in range(6):
+                    n = hi@ hh[:,d2].conj()
+                    d = hi.norm() * hh[:,d2].norm()
+                    res[i, d1, d2] = n.abs()/d
+        return res.sum(0).amax(dim=1)
+
+    n_comb = 2
+    comb = list(itertools.combinations(range(6), n_comb))
+    lb = torch.tensor(comb)
+    lbs = lb.unsqueeze(1).repeat(1,100,1).reshape(lb.shape[0]*100, n_comb)
+    hall = torch.load(f'../data/nem_ss/nem_res/Hhat_{n_comb}comb_res.pt')
+    acc = 0
+    for i in range(len(hall)):
+        hh = hall[i].squeeze()
+        res = get_lb(h0, hh)
+        _, lb_hat = torch.topk(res, n_comb)
+
+        for ii in range(n_comb):
+            if lb_hat[ii] in lbs[i]:
+                acc += 1
+    print(acc/len(hall)/n_comb)
