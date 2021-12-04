@@ -1,14 +1,16 @@
 #%%
-#@title rid=125000 cold start, cold shared Hhat
+#@title rid144002 similar to r140120 with batch norm before sigmoid inside, 150 epoch
 from utils import *
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 100
 torch.set_printoptions(linewidth=160)
 torch.set_default_dtype(torch.double)
-from unet.unet_model import UNetHalf8to100 as UNetHalf
+from unet.unet_model import UNetHalf8to100_256_bnsig as UNetHalf
+from datetime import datetime
+print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-rid = 125000 # running id
+rid = 144002 # running id
 fig_loc = '../data/nem_ss/figures/'
 if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
     print('made a new folder')
@@ -18,26 +20,30 @@ fig_loc = fig_loc + f'rid{rid}/'
 I = 3000 # how many samples
 M, N, F, J = 3, 100, 100, 3
 NF = N*F
+eps = 5e-4
 opts = {}
-opts['n_ch'] = 1  
+opts['n_ch'] = [2,1]  
 opts['batch_size'] = 64
-opts['EM_iter'] = 150
+opts['EM_iter'] = 201
 opts['lr'] = 0.001
-opts['n_epochs'] = 51
+opts['n_epochs'] = 150
 opts['d_gamma'] = 8 
 
 d = torch.load('../data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
-from skimage.transform import resize
-gtr = torch.tensor(resize(xtr[...,0].abs(), [I,opts['d_gamma'],opts['d_gamma']],\
-    order=1, preserve_range=True ))
-gtr = gtr/gtr.amax(dim=[1,2])[...,None,None]  #standardization 
-gtr = torch.cat([gtr[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I,J,1,8,8]
+# from skimage.transform import resize
+# gtr = torch.tensor(resize(xtr[...,0].abs(), [I,opts['d_gamma'],opts['d_gamma']],\
+#     order=1, preserve_range=True ))
+# gtr = gtr/gtr.amax(dim=[1,2])[...,None,None]  #standardization 
+# gtr = torch.cat([gtr[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I,J,1,8,8]
+gtr = torch.load('../data/nem_ss/xx_all_8by8.pt')
+gtr = gtr/gtr.amax(dim=[3,4])[...,None,None]
+gtr = torch.cat([gtr for j in range(J)], dim=1)
 
 loss_iter, loss_tr = [], []
-model = UNetHalf(opts['n_ch'], opts['n_ch']).cuda()
+model = UNetHalf(opts['n_ch'][0], opts['n_ch'][1]).cuda()
 optimizer = optim.RAdam(model.parameters(),
                 lr= opts['lr'],
                 betas=(0.9, 0.999), 
@@ -45,12 +51,10 @@ optimizer = optim.RAdam(model.parameters(),
                 weight_decay=0)
 "initial"
 vtr = torch.randn(N, F, J).abs().to(torch.cdouble).repeat(I, 1, 1, 1)
-Htr = torch.randn(M, J).to(torch.cdouble).repeat(I, 1, 1)
+# Htr = torch.randn(M, J).to(torch.cdouble).repeat(I, 1, 1)
+Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
 Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*100
-added_noise = torch.rand(J,1,opts['d_gamma'],opts['d_gamma'])
-for j in range(J):
-    added_noise[j,0] = awgn(gtr[0,j,0], snr=10, seed=j) - gtr[0,j,0] 
-gtr = gtr + added_noise
+lb = torch.rand(J,1,opts['d_gamma'],opts['d_gamma']).repeat(opts['batch_size'], 1, 1, 1, 1).cuda()
 
 for epoch in range(opts['n_epochs']):    
     for param in model.parameters():
@@ -59,7 +63,7 @@ for epoch in range(opts['n_epochs']):
 
     for i, (x,) in enumerate(tr): # gamma [n_batch, 4, 4]
         #%% EM part
-        Hhat = Htr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
+        # Hhat = Htr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
         vhat = vtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()        
         Rb = Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
         g = gtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda().requires_grad_()
@@ -91,7 +95,7 @@ for epoch in range(opts['n_epochs']):
             # vj.imag = vj.imag - vj.imag
             outs = []
             for j in range(J):
-                outs.append(torch.sigmoid(model(g[:,j])))
+                outs.append(model(torch.cat((g[:,j], lb[:,j]), dim=1)))
             out = torch.cat(outs, dim=1).permute(0,2,3,1)
             vhat.real = threshold(out)
             loss = loss_func(vhat, Rsshatnf.cuda())
@@ -106,7 +110,7 @@ for epoch in range(opts['n_epochs']):
             ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
             ll_traj.append(ll.item())
             if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
-            if ii > 5 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <1e-3:
+            if ii > 5 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3])<eps:
                 print(f'EM early stop at iter {ii}, batch {i}, epoch {epoch}')
                 break
     
@@ -135,12 +139,12 @@ for epoch in range(opts['n_epochs']):
             plt.title(f'3rd source of vj in first sample from the first batch at epoch {epoch}')
             plt.savefig(fig_loc + f'id{rid}_vj3_epoch{epoch}')
 
-        # #%% update variable
-        # with torch.no_grad():
-        #     gtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = g.cpu()
-        #     vtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = vhat.cpu()
-        #     Htr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Hhat.cpu()
-        #     Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Rb.cpu()
+        #%% update variable
+        with torch.no_grad():
+            gtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = g.cpu()
+            vtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = vhat.cpu()
+            # Htr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Hhat.cpu()
+            Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Rb.cpu()
         g.requires_grad_(False)
         model.train()
         for param in model.parameters():
@@ -148,7 +152,7 @@ for epoch in range(opts['n_epochs']):
 
         outs = []
         for j in range(J):
-            outs.append(torch.sigmoid(model(g[:,j])))
+            outs.append(model(torch.cat((g[:,j], lb[:,j]), dim=1)))
         out = torch.cat(outs, dim=1).permute(0,2,3,1)
         vhat.real = threshold(out)
         optimizer.zero_grad()         
@@ -175,4 +179,3 @@ for epoch in range(opts['n_epochs']):
     plt.close('all')  # to avoid warnings
     torch.save(model, f'model_rid{rid}.pt')
     torch.save(Hhat, f'Hhat_rid{rid}.pt')
-#%%
