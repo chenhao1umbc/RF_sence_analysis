@@ -2921,4 +2921,68 @@ if True:
     print(acc/len(hall)/n_comb)
 
 ######################################################Weakly supervised#############################################################
-#%%
+#%% Weakly supervised label and data generation
+    "raw data processing"
+    FT = 100
+    var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
+    data = {}
+    for i in range(6):
+        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
+        dd = (np.sum((abs(temp['x'])**2), 1)**0.5).reshape(2000, 1)
+        data[i] = temp['x'] / dd  # normalized very sample to 1
+
+    np.set_printoptions(linewidth=150)
+    "To generate 5000 mixture samples"
+    M, I_comb = 6, 50# M is number of Channel, I_comb is how many samples per combination
+    theta = np.array([15, 45, 75, -15, -45, -75])*np.pi/180  #len=J, signal AOAs  
+    h = np.exp(-1j*np.pi*np.arange(0, M)[:,None]@np.sin(theta)[None, :])  # shape of [M, J]
+
+    data_pool, lbs = [], []
+    for J in range(2, 7):
+        combs = list(itertools.combinations(range(6), J))
+        for i, lb in enumerate(combs):
+            np.random.seed(i+10)  # val i+5, te i+10, run from scratch
+            d = 0
+            for ii in range(J):
+                np.random.shuffle(data[lb[ii]])
+            for ii in range(J):
+                d = d + h[:,lb[ii]][:,None]@data[lb[ii]][:I_comb,None,:] 
+            data_pool.append(d)
+            lbs.append(lb)
+        print(J)
+    data_all = np.concatenate(data_pool, axis=0)  #[I,M,time_len]
+    *_, Z = stft(data_all, fs=4e7, nperseg=FT, boundary=None)
+    x = torch.tensor(np.roll(Z, FT//2, axis=2))  # roll nperseg//2
+    plt.figure()
+    plt.imshow(x[0,0].abs().log(), aspect='auto', interpolation='None')
+    plt.title(f'One example of {J}-component mixture')
+    # torch.save((x,lbs), f'weakly50percomb_tr3kM{M}FT{FT}_xlb.pt')
+
+    #"get s and h for the val and test data"
+    import itertools
+    "raw data processing"
+    data = {}
+    for i in range(6):
+        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
+        dd = (np.sum((abs(temp['x'])**2), 1)**0.5).reshape(2000, 1)
+        data[i] = temp['x'] / dd  # normalized very sample to 1
+
+    s_pool, lbs = [], []
+    for J in range(2, 7):
+        combs = list(itertools.combinations(range(6), J))
+        for i, lb in enumerate(combs):
+            np.random.seed(i+10)  # val i+5, te i+10, run from scratch
+            for ii in range(J):
+                np.random.shuffle(data[lb[ii]])
+            for ii in range(J):
+                d = data[lb[ii]][:I_comb,:] 
+                s_pool.append(d.copy())
+            lbs.append(lb)
+        print(J)
+    data_all = np.concatenate(s_pool, axis=0)  #[I,M,time_len]
+    *_, Z = stft(data_all, fs=4e7, nperseg=FT, boundary=None)
+    s = torch.tensor(np.roll(Z, FT//2, axis=1))  # roll nperseg//2
+    plt.figure()
+    plt.imshow(s[0].abs().log(), aspect='auto', interpolation='None')
+    plt.title(f'One example of {J}-component mixture')
+    torch.save((x,s,lbs), f'weakly50percomb_te3kM{M}FT{FT}_xlb.pt')
