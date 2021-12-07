@@ -2985,4 +2985,23 @@ if True:
     plt.figure()
     plt.imshow(s[0].abs().log(), aspect='auto', interpolation='None')
     plt.title(f'One example of {J}-component mixture')
-    torch.save((x,s,lbs), f'weakly50percomb_te3kM{M}FT{FT}_xlb.pt')
+    # torch.save((x,s,lbs), f'weakly50percomb_te3kM{M}FT{FT}_xlb.pt')
+    #%% check s 
+    "x.shape is [2850, 6, 100, 100], which means 2850=57*50, 57=15+20+15+6+1"
+    "s.shape is [9300, 100, 100], which means 9300=186*50, 186=15*2+20*3+15*4+6*6+1*6"
+    J = 2
+    combs = list(itertools.combinations(range(6), J))
+    print(combs)
+    xr = x.reshape(57,50,6,100,100)
+    sr = s.reshape(186,50,100,100)
+
+    wc = 2
+    ind = 10
+    plt.figure()
+    plt.imshow(xr[wc,ind,0].abs())
+
+    plt.figure()
+    if wc<15:
+        for i in range(2):
+            plt.figure()
+            plt.imshow(sr[wc*2+i,ind].abs())
