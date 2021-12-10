@@ -2593,6 +2593,24 @@ if True:
     plt.title('loss value')
     plt.show()
 
+    plt.figure()
+    for i in range(6):
+        plt.subplot(2,3,i+1)
+        plt.imshow(g[0,i,0].abs())
+        plt.colorbar()
+        plt.tight_layout(pad=1.2)
+        plt.title(f'gamma of source {i+1}',y=1.2)
+
+    graw = torch.tensor(resize(d[...,0].abs(), [8,8], order=1, preserve_range=True))
+    graw = (graw/graw.max())[None,...]  #standardization shape of [1, 8, 8]
+    plt.figure()
+    for i in range(6):
+        plt.subplot(2,3,i+1)
+        plt.imshow(g[0,i,0].abs() - graw[0].abs())
+        plt.colorbar(fraction=0.046)
+        plt.tight_layout(pad=1.7)    
+        # plt.title(f'gamma diff of source {i+1}',y=1.2)
+        
 #%% EM for M=6 > real J, to get correct J
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
