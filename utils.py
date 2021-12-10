@@ -57,8 +57,14 @@ def log_lh(x, vhat, Hhat, Rb):
     Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
     Rxperm = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb 
     Rx = Rxperm.permute(2,0,1,3,4) # shape of [I, N, F, M, M]
-    l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze() 
-    return l.sum().real, Rs, Rxperm
+    try:
+        l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
+        return l.sum().real, Rs, Rxperm
+    except:
+        eps = torch.ones(Rx.shape[-1], device=Rx.device).diag_embed()*1e-10
+        Rx = Rx + eps
+        l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
+        return l.sum().real, Rs, Rxperm+eps   
 
 def log_likelihood(x, vhat, Hhat, Rb, lamb=0):
     """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
