@@ -3,12 +3,13 @@ from PIL.Image import FASTOCTREE
 from numpy import broadcast_arrays
 from numpy.core.fromnumeric import nonzero
 from utils import *
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 150
 torch.set_printoptions(linewidth=160)
 torch.set_default_dtype(torch.double)
 
-#%% #@title rid170000 based on rid160100 for 6 classes
+#%%
+#@title rid170000 based on rid160100 for 6 classes
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -19,7 +20,6 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-import time
 def batch_process(model, g, lb, idx):
     """This function try to process forward pass in a batch way
 
@@ -34,7 +34,7 @@ def batch_process(model, g, lb, idx):
     inputs = torch.cat((G, L), dim=2).reshape(-1, 2, L.shape[-2], L.shape[-1])
     outs = []
     bs, i = 30, 0  # batch size
-    while i*bs <= inputs.shape[0]:
+    while i*bs < inputs.shape[0]:
         outs.append(model(inputs[i*bs:i*bs+bs]).squeeze())
         i += 1 
     res = torch.cat(outs).reshape(G.shape[0], G.shape[1],100,100)
@@ -56,8 +56,8 @@ NF = N*F
 eps = 5e-4
 opts = {}
 opts['n_ch'] = [2,1]  
-opts['batch_size'] = 32
-opts['EM_iter'] = 201
+opts['batch_size'] = 50
+opts['EM_iter'] = 5
 opts['lr'] = 0.001
 opts['n_epochs'] = 71
 opts['d_gamma'] = 8 
@@ -89,8 +89,8 @@ optimizer = optim.RAdam(model.parameters(),
                 weight_decay=0)
 "initial"
 vtr = torch.randn(N, F, J).abs().to(torch.cdouble).repeat(I, 1, 1, 1)
-Htr = torch.ones(M, J).to(torch.cdouble).repeat(I, 1, 1)
-# Hhat = torch.ones(M, J).to(torch.cdouble).cuda()
+# Htr = torch.ones(M, J).to(torch.cdouble).repeat(I, 1, 1)
+Hhat = torch.ones(M, J).to(torch.cdouble).cuda()
 Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*100
 lb = torch.load('../data/nem_ss/lb_c6_J188.pt') # shape of [J,1,8,8], cpu()
 lb = lb.repeat(opts['batch_size'], 1, 1, 1, 1).cuda()
@@ -101,7 +101,7 @@ for epoch in range(opts['n_epochs']):
     model.eval()
 
     for i, (x, y) in enumerate(tr): # x is data, y is label
-        Hhat = Htr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
+        # Hhat = Htr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
         vhat = vtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()        
         Rb = Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
         g = gtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda().requires_grad_()
@@ -131,20 +131,9 @@ for epoch in range(opts['n_epochs']):
             Rb.imag = Rb.imag - Rb.imag
 
             "calculate vj"
-            # t = time.time()
-            # out = torch.ones(vhat.shape, device=vhat.device)*1e-20
-            # for ib in range(opts['batch_size']):
-            #     for j in range(J):
-            #         if y[ib,j] == 1.0 : 
-            #             out[ib,:,:,j] = model(torch.cat((g[ib:ib+1,j], lb[ib:ib+1,j]), dim=1)).squeeze()
-            # vhat.real = threshold(out)
-            # print('first method uses time:', time.time()-t)
-
-            t = time.time()
             out = torch.ones(vhat.shape, device=vhat.device)*1e-20
             out[idx[:,0],:,:,idx[:,1]] = batch_process(model, g, lb, idx)[:,0]
-            a = threshold(out)
-            print('second method uses time:', time.time()-t)
+            vhat.real = threshold(out)
             
             loss = loss_func(vhat, Rsshatnf.cuda())
             optim_gamma.zero_grad()   
@@ -191,7 +180,7 @@ for epoch in range(opts['n_epochs']):
         with torch.no_grad():
             gtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = g.cpu()
             vtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = vhat.cpu()
-            Htr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Hhat.cpu()
+            # Htr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Hhat.cpu()
             Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Rb.cpu()
         g.requires_grad_(False)
         model.train()
@@ -199,10 +188,7 @@ for epoch in range(opts['n_epochs']):
             param.requires_grad_(True)
 
         out = torch.ones(vhat.shape, device=vhat.device)*1e-20
-        for ib in range(opts['batch_size']):
-            for j in range(J):
-                if y[ib,j] == 1.0 : 
-                    out[ib,:,:,j] = model(torch.cat((g[ib:ib+1,j], lb[ib:ib+1,j]), dim=1)).squeeze()
+        out[idx[:,0],:,:,idx[:,1]] = batch_process(model, g, lb, idx)[:,0]
         vhat.real = threshold(out)
         optimizer.zero_grad()         
         loss = loss_func(vhat, Rsshatnf.cuda())
@@ -237,5 +223,3 @@ for epoch in range(opts['n_epochs']):
     #     if abs((s1-s2)/s1) < 5e-4 :
     #         print('break-2')
     #         break
-
-#%%
