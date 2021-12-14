@@ -210,10 +210,10 @@ def em_func(x, J=3, Hscale=1, Rbscale=100, max_iter=501, lamb=0, seed=0, show_pl
 
     return shat, Hhat, vhat, Rb
 
-def awgn(xx, snr, seed=0):
+def awgn(xx, snr=20, seed=0):
     """
     This function is adding white guassian noise to the given complex signal
-    :param x: the given signal with shape of [N, T, Channel]
+    :param x: the given signal with shape of [N, F, Channel]
     :param snr: a float number
     :return:
     """
@@ -226,32 +226,32 @@ def awgn(xx, snr, seed=0):
         noise = torch.tensor(np.sqrt(N0) * np.random.normal(0, 1, x.shape), device=x.device)
         return x+noise.to(x.dtype)
     else: #len(x.shape) == 3
-        N, T, J = x.shape
+        N, F, J = x.shape
         for j in range(J):
             Esym = x[:,:,j].norm()**2/ x[:,:,j].numel()
             N0 = (Esym / SNR).item()
-            z = np.random.normal(loc=0, scale=np.sqrt(2)/2, size=(N*T, 2)).view(np.complex128)
-            noise = torch.tensor(np.sqrt(N0)*z, device=x.device).reshape(N, T)
+            z = np.random.normal(loc=0, scale=np.sqrt(2)/2, size=(N*F, 2)).view(np.complex128)
+            noise = torch.tensor(np.sqrt(N0)*z, device=x.device).reshape(N, F)
             x[:,:,j] = x[:,:,j] + noise       
         return  x
 
 def awgn_batch(xx, snr, seed=0):
     """
     This function is adding white guassian noise to the given complex signal
-    :param x: the given signal with shape of [I, N, T, Channel]
+    :param x: the given signal with shape of [I, N, F, J(Channel, M actually)]
     :param snr: a float number
     :return:
     """
     SNR = 10 ** (snr / 10.0)
     x = xx.clone()
     np.random.seed(seed)
-    I, N, T, J = x.shape
+    I, N, F, J = x.shape
     for i in range(I):
         for j in range(J):
             Esym = x[i,:,:,j].norm()**2/ x[i,:,:,j].numel()
             N0 = (Esym / SNR).item()
-            z = np.random.normal(loc=0, scale=np.sqrt(2)/2, size=(N*T, 2)).view(np.complex128)
-            noise = torch.tensor(np.sqrt(N0)*z, device=x.device).reshape(N, T)
+            z = np.random.normal(loc=0, scale=np.sqrt(2)/2, size=(N*F, 2)).view(np.complex128)
+            noise = torch.tensor(np.sqrt(N0)*z, device=x.device).reshape(N, F)
             x[i,:,:,j] = x[i,:,:,j] + noise       
     return  x
 
