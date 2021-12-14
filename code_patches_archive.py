@@ -9,6 +9,28 @@ if True:
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
 
+#%% toy data generation and run EM 
+    v = torch.Tensor(sio.loadmat('../data/nem_ss/v.mat')['v'])
+    N,F,J = v.shape
+    M = 6
+    max_iter = 200
+    rseed = 1
+    nvar = 1e-6
+
+    torch.manual_seed(1)
+    theta = torch.tensor([15, 75, -75])*np.pi/180  #len=J, signal AOAs  
+    h = ((-1j*np.pi*torch.arange(0, M))[:,None]@ torch.sin(theta).to(torch.complex128)[None, :]).exp()  # shape of [M, J]
+    s = torch.zeros((N,F,J), dtype=torch.complex128)
+    c = torch.zeros((M,N,F,J), dtype=torch.complex128)
+
+    for j in range(1, J):
+        s[:,:,j] = (torch.randn(N,F)+1j*torch.randn(N,F))/2**0.5*v[:,:,j]**0.5
+        for m in range(1,M):
+            c[m,:,:,j] = h[m,j]*s[:,:,j]
+    x = c.sum(3) + (torch.randn(M,N,F)+1j*torch.randn(M,N,F))/2**0.5*nvar**0.5
+    x = x.permute(1,2,0)/x.abs().max()
+    shat, Hhat, vhat, Rb = em_func(x, J=6, show_plot=True)
+
 #%% load data
     I = 3000 # how many samples
     M, N, F, J = 3, 50, 50, 3
