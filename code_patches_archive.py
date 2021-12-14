@@ -9,6 +9,28 @@ if True:
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
 
+#%% toy data generation and run EM 
+    v = torch.Tensor(sio.loadmat('../data/nem_ss/v.mat')['v'])
+    N,F,J = v.shape
+    M = 6
+    max_iter = 200
+    rseed = 1
+    nvar = 1e-6
+
+    torch.manual_seed(1)
+    theta = torch.tensor([15, 75, -75])*np.pi/180  #len=J, signal AOAs  
+    h = ((-1j*np.pi*torch.arange(0, M))[:,None]@ torch.sin(theta).to(torch.complex128)[None, :]).exp()  # shape of [M, J]
+    s = torch.zeros((N,F,J), dtype=torch.complex128)
+    c = torch.zeros((M,N,F,J), dtype=torch.complex128)
+
+    for j in range(1, J):
+        s[:,:,j] = (torch.randn(N,F)+1j*torch.randn(N,F))/2**0.5*v[:,:,j]**0.5
+        for m in range(1,M):
+            c[m,:,:,j] = h[m,j]*s[:,:,j]
+    x = c.sum(3) + (torch.randn(M,N,F)+1j*torch.randn(M,N,F))/2**0.5*nvar**0.5
+    x = x.permute(1,2,0)/x.abs().max()
+    shat, Hhat, vhat, Rb = em_func(x, J=6, show_plot=True)
+
 #%% load data
     I = 3000 # how many samples
     M, N, F, J = 3, 50, 50, 3
@@ -2610,7 +2632,7 @@ if True:
         plt.colorbar(fraction=0.046)
         plt.tight_layout(pad=1.7)    
         # plt.title(f'gamma diff of source {i+1}',y=1.2)
-        
+
 #%% EM for M=6 > real J, to get correct J
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
@@ -2937,3 +2959,89 @@ if True:
             if lb_hat[ii] in lbs[i]:
                 acc += 1
     print(acc/len(hall)/n_comb)
+
+######################################################Weakly supervised#############################################################
+#%% Weakly supervised label and data generation
+    "raw data processing"
+    FT = 100
+    var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
+    data = {}
+    for i in range(6):
+        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
+        dd = (np.sum((abs(temp['x'])**2), 1)**0.5).reshape(2000, 1)
+        data[i] = temp['x'] / dd  # normalized very sample to 1
+
+    np.set_printoptions(linewidth=150)
+    "To generate 5000 mixture samples"
+    M, I_comb = 6, 50# M is number of Channel, I_comb is how many samples per combination
+    theta = np.array([15, 45, 75, -15, -45, -75])*np.pi/180  #len=J, signal AOAs  
+    h = np.exp(-1j*np.pi*np.arange(0, M)[:,None]@np.sin(theta)[None, :])  # shape of [M, J]
+
+    data_pool, lbs = [], []
+    for J in range(2, 7):
+        combs = list(itertools.combinations(range(6), J))
+        for i, lb in enumerate(combs):
+            np.random.seed(i+10)  # val i+5, te i+10, run from scratch
+            d = 0
+            for ii in range(J):
+                np.random.shuffle(data[lb[ii]])
+            for ii in range(J):
+                d = d + h[:,lb[ii]][:,None]@data[lb[ii]][:I_comb,None,:] 
+            data_pool.append(d)
+            lbs.append(lb)
+        print(J)
+    data_all = np.concatenate(data_pool, axis=0)  #[I,M,time_len]
+    *_, Z = stft(data_all, fs=4e7, nperseg=FT, boundary=None)
+    x = torch.tensor(np.roll(Z, FT//2, axis=2))  # roll nperseg//2
+    plt.figure()
+    plt.imshow(x[0,0].abs().log(), aspect='auto', interpolation='None')
+    plt.title(f'One example of {J}-component mixture')
+    # torch.save((x,lbs), f'weakly50percomb_tr3kM{M}FT{FT}_xlb.pt')
+
+    #"get s and h for the val and test data"
+    import itertools
+    "raw data processing"
+    data = {}
+    for i in range(6):
+        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
+        dd = (np.sum((abs(temp['x'])**2), 1)**0.5).reshape(2000, 1)
+        data[i] = temp['x'] / dd  # normalized very sample to 1
+
+    s_pool, lbs = [], []
+    for J in range(2, 7):
+        combs = list(itertools.combinations(range(6), J))
+        for i, lb in enumerate(combs):
+            np.random.seed(i+10)  # val i+5, te i+10, run from scratch
+            for ii in range(J):
+                np.random.shuffle(data[lb[ii]])
+            for ii in range(J):
+                d = data[lb[ii]][:I_comb,:] 
+                s_pool.append(d.copy())
+            lbs.append(lb)
+        print(J)
+    data_all = np.concatenate(s_pool, axis=0)  #[I,M,time_len]
+    *_, Z = stft(data_all, fs=4e7, nperseg=FT, boundary=None)
+    s = torch.tensor(np.roll(Z, FT//2, axis=1))  # roll nperseg//2
+    plt.figure()
+    plt.imshow(s[0].abs().log(), aspect='auto', interpolation='None')
+    plt.title(f'One example of {J}-component mixture')
+    # torch.save((x,s,lbs), f'weakly50percomb_te3kM{M}FT{FT}_xslb.pt')
+    #%% check s 
+    "x.shape is [2850, 6, 100, 100], which means 2850=57*50, 57=15+20+15+6+1"
+    "s.shape is [9300, 100, 100], which means 9300=186*50, 186=15*2+20*3+15*4+6*6+1*6"
+    J = 2
+    combs = list(itertools.combinations(range(6), J))
+    print(combs)
+    xr = x.reshape(57,50,6,100,100)
+    sr = s.reshape(186,50,100,100)
+
+    wc = 2
+    ind = 10
+    plt.figure()
+    plt.imshow(xr[wc,ind,0].abs())
+
+    plt.figure()
+    if wc<15:
+        for i in range(2):
+            plt.figure()
+            plt.imshow(sr[wc*2+i,ind].abs())

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 from scipy.signal import stft 
 from scipy import stats
+import itertools
 
 import torch
 from torch import nn
@@ -46,6 +47,24 @@ def loss_func(vhat, Rsshatnf, lamb=0):
     else:
         loss = p1 + p2.sum() - lamb*vhat.abs().sum()
     return loss.sum()
+
+def log_lh(x, vhat, Hhat, Rb):
+    """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
+        vhat shape of [I, N, F, J]
+        Rb shape of [I, M, M]
+        x shape of [I, N, F, M]
+    """
+    Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
+    Rxperm = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb 
+    Rx = Rxperm.permute(2,0,1,3,4) # shape of [I, N, F, M, M]
+    try:
+        l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
+        return l.sum().real, Rs, Rxperm
+    except:
+        eps = torch.ones(Rx.shape[-1], device=Rx.device).diag_embed()*1e-10
+        Rx = Rx + eps
+        l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
+        return l.sum().real, Rs, Rxperm+eps   
 
 def log_likelihood(x, vhat, Hhat, Rb, lamb=0):
     """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
