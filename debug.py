@@ -8,7 +8,7 @@ plt.rcParams['figure.dpi'] = 150
 torch.set_printoptions(linewidth=160)
 torch.set_default_dtype(torch.double)
 
-#%%
+#%% load data
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
@@ -24,6 +24,7 @@ ratio = d.abs().amax(dim=(1,2,3))/3
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
 s_all = s.abs().permute(0,2,3,1) 
 
+#%% NEM
 def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model=''):
     def log_likelihood(x, vhat, Hhat, Rb, ):
         """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
@@ -55,6 +56,7 @@ def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model='')
     graw = (graw/graw.max())[None,...]  #standardization shape of [1, 8, 8]
     g = torch.stack([graw[:,None] for j in range(J)], dim=1).cuda()  # shape of [1,J,8,8]
     lb = torch.load('../data/nem_ss/lb_c6_J188.pt')
+    lb = lb[[0,5,2]]
     lb = lb[None,...].cuda()
     x = x.cuda()
 
@@ -107,7 +109,7 @@ def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model='')
         ll, Rs, Rx, Rcj = log_likelihood(x, vhat, Hhat, Rb)
         ll_traj.append(ll.item())
         if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
-        if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <5e-4:
+        if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <1e-4:
             print(f'EM early stop at iter {ii}')
             break
 
@@ -117,17 +119,16 @@ rid = 160100
 model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_33.pt'
 t = time.time()
 res = []
-which_class, ind = [0,1,2], 20
+which_class, ind = [0,1,2], 0
 for i, v in enumerate(which_class):
     if i == 0 : d = 0
     d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
 d = d.reshape(M, N, F).permute(1,2,0)/d.abs().max()
-shv, g, Rb, loss = nem_func_less(awgn(d,30), J=6, seed=10, model=model, max_iter=301)
+shv, g, Rb, loss = nem_func_less(awgn(d, snr=30), J=3, seed=10, model=model, max_iter=301)
 shat, Hhat, vhat = shv
-
 # print('done', time.time()-t)
 
-#%%
+#%% EM
 def em_func0(x, J=3, Hscale=1, Rbscale=100, max_iter=501, lamb=0, seed=0, show_plot=False):
     #  EM algorithm for one complex sample
     def calc_ll_cpx2(x, vhat, Rj, Rb):
@@ -200,49 +201,52 @@ def em_func0(x, J=3, Hscale=1, Rbscale=100, max_iter=501, lamb=0, seed=0, show_p
             plt.imshow(vhat[:,:,j].real)
             plt.colorbar()
 
-    return shat, Hhat, vhat, Rb
+    return shat, Hhat, vhat, Rb, ll_traj
 
-J = 6
-which_class, ind = [0,4,5], 20
+which_class, ind = [0,2,5], 10
 for i, v in enumerate(which_class):
     if i == 0 : d = 0
     d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
 d = d.reshape(M, N, F).permute(1,2,0)/d.abs().max()
-
-shat, Hhat, vhat, Rb = em_func0(awgn(d,snr=30), J=J)
-loss = None
-
-
+shat, Hhat, vhat, Rb, loss = em_func0(awgn(d,snr=30), J=6)
 
 
 #%%
-if not loss==None:
-    plt.figure()
-    plt.plot(loss, '-x')
-    plt.show()
+plt.figure()
+plt.plot(loss, '-x')
+plt.show()
 
 plt.figure()
-for i in range(J):
+for i in range(shat.squeeze().shape[-1]):
     plt.subplot(3,2,i+1)
     plt.imshow(shat.squeeze()[:,:,i].abs())
-    plt.colorbar()
+    a = plt.colorbar()
+    a.ax.tick_params(labelsize=8)
     plt.tight_layout(pad=1.1)
+plt.suptitle("Plots of estimated s", x=0.6)
+plt.tight_layout(pad=1.5)
 
 plt.figure()
-for i in range(J):
+for i in range(vhat.shape[-1]):
     plt.subplot(3,2,i+1)
     plt.imshow(vhat.squeeze()[:,:,i].abs())
-    plt.colorbar()
+    a = plt.colorbar()
+    a.ax.tick_params(labelsize=8)
+    
     plt.tight_layout(pad=1.1)
+plt.suptitle("Plots of estimated v", x=0.6)
+plt.tight_layout(pad=1.1)
 
 plt.figure()
 for i, v in enumerate(which_class):
     plt.subplot(3,2,i+1)
     plt.imshow(s[ind, v].abs())
     plt.title(f'Source {v+1} in sample {ind}', fontsize=10)
-    plt.colorbar()
+    a = plt.colorbar()
+    a.ax.tick_params(labelsize=8)
     plt.tight_layout(pad=1.1)
-
+plt.suptitle("Ground truth")
+plt.tight_layout(pad=1.1)
 
 # graw = torch.tensor(resize(d[...,0].abs(), [8,8], order=1, preserve_range=True))
 # graw = (graw/graw.max())  #standardization shape of [1, 8, 8]
