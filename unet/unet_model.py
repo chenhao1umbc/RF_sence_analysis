@@ -6,7 +6,7 @@ from .unet_parts import *
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=True):
+    def __init__(self, n_channels, n_classes, True):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -42,13 +42,11 @@ class UNet(nn.Module):
 class Up_(nn.Module):
     """Upscaling then double conv"""
 
-    def __init__(self, in_channels, out_channels, bilinear=True):
+    def __init__(self, in_channels, out_channels, larger=True):
         super().__init__()
 
         # if bilinear, use the normal convolutions to reduce the number of channels
-        if bilinear:
-            # self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            # self.conv = DoubleConv(in_channels, out_channels // 2, in_channels // 2)
+        if larger:
             self.up = nn.ConvTranspose2d(in_channels , in_channels, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels)
         else:
@@ -89,7 +87,7 @@ class UNetHalf4to150(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -135,7 +133,7 @@ class UNetHalf4to50(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -176,7 +174,7 @@ class UNetHalf8to50(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.reshape = nn.Sequential(
@@ -215,7 +213,7 @@ class UNetHalf8to128(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -254,7 +252,7 @@ class UNetHalf8to100(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -296,7 +294,7 @@ class UNetHalf8to100_morelayers(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -343,7 +341,7 @@ class UNetHalf8to100_16_FC_128(nn.Module):
         
         self.fc = nn.Linear(9, 8)
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -391,7 +389,7 @@ class UNetHalf8to100_16_FC(nn.Module):
         
         self.fc = nn.Linear(9, 8)
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -438,7 +436,7 @@ class UNetHalf8to100_stack(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -485,7 +483,7 @@ class UNetHalf8to100_stack_256(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -532,7 +530,7 @@ class UNetHalf8to100_stack2(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -579,7 +577,7 @@ class UNetHalf8to100_stack2_256(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -626,7 +624,7 @@ class UNetHalf8to100_256(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -672,7 +670,7 @@ class UNetHalf8to100_256_sig(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -720,7 +718,7 @@ class UNetHalf8to100_256_bnsig(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -769,7 +767,7 @@ class UNetHalf8to100_256_bnsig2(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -814,7 +812,7 @@ class UNetHalf8to100_256_bnsig3(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -862,7 +860,7 @@ class UNetHalf8to100_256_bnsig4(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -908,7 +906,7 @@ class UNetHalf8to100_256_bnsig5(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -956,7 +954,7 @@ class UNetHalf8to100_relu(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1004,7 +1002,7 @@ class UNetHalf8to100_vjto1(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1053,7 +1051,7 @@ class UNetHalf8to100_vjto1_2(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1101,7 +1099,7 @@ class UNetHalf8to100_vjto1_3(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1149,7 +1147,7 @@ class UNetHalf8to100_vjto1_4(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1197,7 +1195,7 @@ class UNetHalf8to100_vjto1_5(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1244,7 +1242,7 @@ class UNetHalf8to100_vjto1_6(nn.Module):
         self.n_ch = 256+128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1292,7 +1290,7 @@ class UNetHalf8to100_vjto1_7(nn.Module):
         self.n_ch = 320
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1340,7 +1338,7 @@ class UNetHalf8to100_vjto1_lsbn(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1383,7 +1381,7 @@ class UNetHalf8to100_lsbn(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1425,7 +1423,7 @@ class UNetHalf8to100_lsbn2(nn.Module):
         self.n_ch = 256
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1476,7 +1474,7 @@ class UNetHalf8to100_256_stack1(nn.Module):
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
             nn.LeakyReLU(inplace=True) )
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1523,7 +1521,7 @@ class UNetHalf8to100_stack3(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1569,7 +1567,7 @@ class UNetHalf8to100_stack3_256(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1615,7 +1613,7 @@ class UNetHalf8to100_19(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
@@ -1670,7 +1668,7 @@ class UNetHalf16to100(nn.Module):
         self.n_ch = 128
 
         self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = Up_(self.n_ch, self.n_ch//2, bilinear=True)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True)
         self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
         self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
         self.reshape = nn.Sequential(
@@ -1698,6 +1696,53 @@ class UNetHalf16to100(nn.Module):
         out = self.outc(x)
         return out
 
+
+class Model171000(nn.Module):
+    "UNetHalf, size 8to100, 256 inner channel, 16 layers, relu "
+    def __init__(self, n_channels, n_classes, bilinear=False):
+        """Only the up part of the unet
+        Args:
+            n_channels ([type]): [how many input channels=n_sources]
+            n_classes ([type]): [how many output classes=n_sources]
+            bilinear (bool, optional): [use interpolation or deconv]. Defaults to False(use deconv).
+        """
+        super(Model171000, self).__init__()
+        self.n_ch = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+        self.n_ch = 256
+
+        self.inc = DoubleConv(n_channels, self.n_ch)
+        self.up1 = Up_(self.n_ch, self.n_ch//2, True) 
+        self.up2 = Up_(self.n_ch//2, self.n_ch//4, bilinear)
+        self.up3 = Up_(self.n_ch//4, self.n_ch//8, bilinear)
+        self.up4 = Up_(self.n_ch//8, self.n_ch//16, bilinear)
+        self.reshape = nn.Sequential(
+            nn.Conv2d(self.n_ch//16, self.n_ch//16, kernel_size=5, dilation=3),
+            nn.BatchNorm2d(self.n_ch//16),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//16, self.n_ch//16, kernel_size=5, dilation=3),
+            nn.BatchNorm2d(self.n_ch//16),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//16, self.n_ch//8, kernel_size=3, dilation=2),
+            nn.BatchNorm2d(self.n_ch//8),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(self.n_ch//8, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.LeakyReLU(inplace=True))
+        self.outc = OutConv(32, n_classes)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.inc(x)
+        x = self.up1(x)
+        x = self.up2(x)
+        x = self.up3(x)
+        x = self.up4(x)
+        x = self.reshape(x) 
+        x = self.outc(x)
+        out = self.relu(x)
+        return out
 
 # Full UNet shape structure
 class UNet8to100(nn.Module):
