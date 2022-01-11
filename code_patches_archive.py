@@ -2746,7 +2746,7 @@ if True:
         torch.save(res, 'res.pt')
     print('done', time.time()-t)
 
-#%% NME M=6 > real J, get hhat
+#%% NEM M=6 > real J, get hhat
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
     plt.rcParams['figure.dpi'] = 150

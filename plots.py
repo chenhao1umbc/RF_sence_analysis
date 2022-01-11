@@ -89,7 +89,7 @@ if True:
     plt.figure()
     plt.plot([0, 5, 10, 20, 'inf'], [0.7955, 0.9053, 0.9521, 0.9544, 0.9513], '-x')
     ss = [0.9151661591587187, 0.9641487953572089, 0.9856960356248871, 0.9977277628251509, 0.9997574770952526]
-    ss = [0.8769 ,...] #snr0 should be
+    # ss = [0.8769 ,...] #snr0 should be
     plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
 
     plt.ylabel('Averaged correlation result')
@@ -100,7 +100,7 @@ if True:
     plt.figure()
     plt.plot([0, 5, 10, 20, 'inf'], [0.967135, 0.971392, 0.978568, 0.976789, 0.980658], '-x')
     ss = [0.9996597122402164, 0.9996303066482091, 0.9994293296731978, 0.9995672830187705, 0.9998204659383773]
-    ss = [0.9980, ...] # snr0 should be
+    # ss = [0.9980, ...] # snr0 should be
     plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
     plt.ylabel('Averaged correlation result')
     plt.xlabel('SNR')
