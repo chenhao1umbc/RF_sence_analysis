@@ -8,7 +8,7 @@ from skimage.transform import resize
 import itertools
 import time
 t = time.time()
-d, s, h = torch.load('../data/nem_ss/test500M6FT100_xsh.pt')
+d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M6FT100_xsh.pt')
 h, N, F, M = torch.tensor(h), s.shape[-1], s.shape[-2], 3
 ratio = d.abs().amax(dim=(1,2,3))/3
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
@@ -44,10 +44,10 @@ def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model='')
     graw = torch.tensor(resize(x[...,0].abs(), [8,8], order=1, preserve_range=True))
     graw = (graw/graw.max())[None,...]  #standardization shape of [1, 8, 8]
     g = torch.stack([graw[:,None] for j in range(J)], dim=1).cuda()  # shape of [1,J,8,8]
-    lb = torch.load('../data/nem_ss/lb_c6_J188.pt')
+    lb = torch.load('/home/chenhao1/Hpython/data/nem_ss/lb_c6_J188.pt')
     lb = lb[None,...].cuda()
-    lb = torch.load('lb_140100.pt')
-    lb = lb[:1,...].cuda()
+    # lb = torch.load('lb_140100.pt')
+    # lb = lb[:1,...].cuda()
     x = x.cuda()
 
     vhat = torch.randn(1, N, F, J).abs().to(torch.cdouble).cuda()
@@ -115,7 +115,6 @@ for i, v in enumerate(which_class):
     d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
 r = d.abs().max()
 d = d.reshape(M, N, F).permute(1,2,0)/r
-
 
 shv, g, Rb, loss = nem_func_less(awgn(d, 30), J=3, seed=10, model=model, max_iter=301)
 shat, Hhat, vhat = shv

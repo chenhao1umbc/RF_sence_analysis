@@ -7,7 +7,7 @@ from skimage.transform import resize
 import itertools
 import time
 t = time.time()
-d, s, h = torch.load('../data/nem_ss/test500M6FT100_xsh.pt')
+d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M6FT100_xsh.pt')
 h, N, F, M = torch.tensor(h), s.shape[-1], s.shape[-2], 3
 ratio = d.abs().amax(dim=(1,2,3))/3
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
@@ -19,7 +19,6 @@ for i, v in enumerate(which_class):
     d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
 r = d.abs().max()
 d = d.reshape(M, N, F).permute(1,2,0)/r
-
 
 def em_func_(x, J=6, Hscale=1, Rbscale=100, max_iter=501, lamb=0, seed=0, show_plot=False):
     #  EM algorithm for one complex sample

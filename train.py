@@ -9,9 +9,9 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-rid = 160100 # running id
-fig_loc = '../data/nem_ss/figures/'
-mod_loc = '../data/nem_ss/models/'
+rid = 000 # running id
+fig_loc = '/home/chenhao1/Hpython/data/nem_ss/figures/'
+mod_loc = '/home/chenhao1/Hpython/data/nem_ss/models/'
 if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
     print('made a new folder')
     os.mkdir(fig_loc + f'rid{rid}/')
@@ -32,7 +32,7 @@ opts['n_epochs'] = 71
 opts['d_gamma'] = 8 
 n = 5
 
-d = torch.load('../data/nem_ss/tr3kM6FT100.pt')
+d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM6FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
@@ -41,7 +41,7 @@ tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 #     order=1, preserve_range=True ))
 # gtr = gtr/gtr.amax(dim=[1,2])[...,None,None]  #standardization 
 # gtr = torch.cat([gtr[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I,J,1,8,8]
-gtr = torch.load('../data/nem_ss/gtr_c6_IJ188.pt') # shape of [I,J,1,8,8]
+gtr = torch.load('/home/chenhao1/Hpython/data/nem_ss/gtr_c6_IJ188.pt') # shape of [I,J,1,8,8]
 
 loss_iter, loss_tr = [], []
 model = UNetHalf(opts['n_ch'][0], opts['n_ch'][1]).cuda()
@@ -55,7 +55,7 @@ vtr = torch.randn(N, F, J).abs().to(torch.cdouble).repeat(I, 1, 1, 1)
 # Htr = torch.randn(M, J).to(torch.cdouble).repeat(I, 1, 1)
 Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
 Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*100
-lb = torch.load('../data/nem_ss/lb_c6_J188.pt') # shape of [J,1,8,8], cpu()
+lb = torch.load('/home/chenhao1/Hpython/data/nem_ss/lb_c6_J188.pt') # shape of [J,1,8,8], cpu()
 lb = lb.repeat(opts['batch_size'], 1, 1, 1, 1).cuda()
 
 for epoch in range(opts['n_epochs']):    
@@ -182,6 +182,7 @@ for epoch in range(opts['n_epochs']):
     torch.save(loss_tr, mod_loc +f'loss_rid{rid}.pt')
     torch.save(model, mod_loc +f'model_rid{rid}_{epoch}.pt')
     torch.save(Hhat, mod_loc +f'Hhat_rid{rid}_{epoch}.pt')    
+
     if epoch >10 :
         s1, s2 = sum(loss_tr[-n*2:-n])/n, sum(loss_tr[-n:])/n
         if s1 - s2 < 0 :
