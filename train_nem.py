@@ -88,7 +88,6 @@ for epoch in range(opts['n_epochs']):
 
             "M-step"
             Hhat = Rxshat @ Rsshat.inverse() # shape of [I, M, J]
-            # Hhat = (Rxshat @ Rsshat.inverse()).mean(0) # shape of [M, J]
             Rb = Rxxhat - Hhat@Rxshat.transpose(-1,-2).conj() - \
                 Rxshat@Hhat.transpose(-1,-2).conj() + Hhat@Rsshat@Hhat.transpose(-1,-2).conj()
             Rb = Rb.diagonal(dim1=-1, dim2=-2).diag_embed()

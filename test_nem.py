@@ -147,11 +147,6 @@ for i in range(3):
     plt.colorbar()
     plt.title('plot of s from NEM')
 
-# for i in range(3):
-#     plt.figure()
-#     plt.imshow(vhat.abs()[...,i])
-#     plt.colorbar()
-
 for i, v in enumerate(which_class):
     plt.figure()
     plt.imshow(s[ind, v].squeeze().abs())
