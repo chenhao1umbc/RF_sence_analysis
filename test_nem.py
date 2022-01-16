@@ -1,4 +1,15 @@
 #%%
+"""Key varibales are 
+M - how many channels
+which_class - list of source index, which sources are in the mixture
+J - the algorithm presumes how many classes in the mixture
+ind - from 0 to 99, index of test sample
+max_iter - how many EM iterations
+seed - random seed number
+rid - training model index
+model - saved trained model
+"""
+
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
@@ -9,7 +20,7 @@ import itertools
 import time
 t = time.time()
 d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M6FT100_xsh.pt')
-h, N, F, M = torch.tensor(h), s.shape[-1], s.shape[-2], 3
+h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
 ratio = d.abs().amax(dim=(1,2,3))/3
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
 s_all = s.abs().permute(0,2,3,1) 
@@ -109,7 +120,7 @@ rid = 171000
 model = f'/home/chenhao1/Hpython/data/nem_ss/models/rid{rid}/model_rid{rid}_45.pt'
 # rid = 160100
 # model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_33.pt'
-which_class, ind = [0,5], 15
+which_class, ind, M = [0,5], 15, 3
 for i, v in enumerate(which_class):
     if i == 0 : d = 0
     d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
