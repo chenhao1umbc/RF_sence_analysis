@@ -106,7 +106,7 @@ def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model='')
     return (shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze()), g.detach().cpu(), Rb.cpu(), ll_traj
 
 rid = 171000
-model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_45.pt'
+model = f'/home/chenhao1/Hpython/data/nem_ss/models/rid{rid}/model_rid{rid}_45.pt'
 # rid = 160100
 # model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_33.pt'
 which_class, ind = [0,5], 15

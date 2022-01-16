@@ -1,3 +1,4 @@
+#%%
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
@@ -13,7 +14,7 @@ ratio = d.abs().amax(dim=(1,2,3))/3
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
 s_all = s.abs().permute(0,2,3,1) 
 
-which_class, ind = [0,5], 15
+which_class, ind = [0,2,5], 15
 for i, v in enumerate(which_class):
     if i == 0 : d = 0
     d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
