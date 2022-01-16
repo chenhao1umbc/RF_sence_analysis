@@ -1,4 +1,5 @@
-#@title rid160100 based on rid150000 for 6 classes
+#%%
+# #@title rid160100 based on rid150000 for 6 classes
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -9,7 +10,7 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-rid = 000 # running id
+rid = 0 # running id
 fig_loc = '/home/chenhao1/Hpython/data/nem_ss/figures/'
 mod_loc = '/home/chenhao1/Hpython/data/nem_ss/models/'
 if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
@@ -25,12 +26,12 @@ NF = N*F
 eps = 5e-4
 opts = {}
 opts['n_ch'] = [2,1]  
-opts['batch_size'] = 32
+opts['batch_size'] = 24
 opts['EM_iter'] = 201
 opts['lr'] = 0.001
 opts['n_epochs'] = 71
 opts['d_gamma'] = 8 
-n = 5
+n = 5  # for stopping 
 
 d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM6FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
