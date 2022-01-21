@@ -120,8 +120,6 @@ for i in range(3):
     plt.colorbar()
 
 #%% test 
-from sklearn import cluster #scikit cluster is not supporting complex data
-
 d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M6FT100_xsh.pt')
 h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
 ratio = d.abs().amax(dim=(1,2,3))/3
@@ -145,21 +143,7 @@ if x.dtype == torch.double:
 x_norm = ((x[:,:,None,:]@x[..., None].conj())**0.5)[:,:,0]
 x_bar = x/x_norm  # shape of [N, F, M]
 xall = x_bar.reshape(N*F, M)
-"""psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
-Given : A set X of obejects{x1,...,xn}
-        A cluster distance function dist(c1, c2)
-for i=1 to n
-    ci = {xi}
-end for
-C = {c1, ..., cn}
-I = n+1
-While I>1 do
-    (cmin1, cmin2) = minimum dist(ci, cj) for all ci, cj in C
-    remove cmin1 and cmin2 from C
-    add {cmin1, cmin2} to C
-    I = I - 1
-end while
-"""
+
 def cluster2abel(c):
     """recursively get alll the labels in the sub-clusters
 
@@ -189,10 +173,44 @@ def dist(data, c1, c2):
         for i2 in l2:
             res = res + (data[i1]-data[i2]).norm()
     return res/len(l1)/len(l2)
-    
+
+def cluster(data):
+    """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
+    Given : A set X of obejects{x1,...,xn}
+            A cluster distance function dist(c1, c2)
+    for i=1 to n
+        ci = {xi}
+    end for
+    C = {c1, ..., cn}
+    I = n+1
+    While I>1 do
+        (cmin1, cmin2) = minimum dist(ci, cj) for all ci, cj in C
+        remove cmin1 and cmin2 from C
+        add {cmin1, cmin2} to C
+        I = I - 1
+    end while
+    """        
+    I = N*F + 1
+    C = [[i] for i in range(I-1)]
+    while I>1:
+        cmin = float('inf')
+        perms = itertools.combinations(range(len(C)), 2)
+        for p in perms:
+            if dist(data, C[p[0]], C[p[1]]) <cmin:
+                cmin1, cmin2 = p
+        temp = [C[cmin1], C[cmin2]]
+        C.pop(cmin1)
+        C.pop(cmin2-1) # the index changed because of previous pop
+        C.append(temp)
+        I = I - 1
+        print(I)
+    return C
+c = cluster(xall)
+
+#%%
+data = xall
 I = N*F + 1
 C = [[i] for i in range(I-1)]
-data = 0
 while I>1:
     cmin = float('inf')
     perms = itertools.combinations(range(len(C)), 2)
@@ -204,3 +222,10 @@ while I>1:
     C.pop(cmin2-1) # the index changed because of previous pop
     C.append(temp)
     I = I - 1
+    print(I)
+
+#%%  parellel
+
+perms = torch.combinations(torch.tensor(C).squeeze())
+d = data[perms]
+d[:,0] - d[:,1]

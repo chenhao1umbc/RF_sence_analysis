@@ -60,11 +60,10 @@ lb = torch.load('/home/chenhao1/Hpython/data/nem_ss/lb_c6_J188.pt') # shape of [
 lb = lb.repeat(opts['batch_size'], 1, 1, 1, 1).cuda()
 
 for epoch in range(opts['n_epochs']):    
-    for param in model.parameters():
-        param.requires_grad_(False)
-    model.eval()
-
     for i, (x,) in enumerate(tr): # gamma [n_batch, 4, 4]
+        for param in model.parameters():
+            param.requires_grad_(False)
+        model.eval()
         #%% EM part
         # Hhat = Htr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
         vhat = vtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()        

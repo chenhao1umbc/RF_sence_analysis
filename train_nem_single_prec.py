@@ -26,7 +26,7 @@ NF = N*F
 eps = 5e-4  # EM tolerance
 opts = {}
 opts['n_ch'] = [2,1]  # input has 2 channels (gamma1,gamma2), output has 1 channel
-opts['batch_size'] = 24
+opts['batch_size'] = 12
 opts['EM_iter'] = 10
 opts['lr'] = 0.001   # learning rate
 opts['n_epochs'] = 71
@@ -63,9 +63,7 @@ lb = torch.load('/home/chenhao1/Hpython/data/nem_ss/lb_c6_J188.pt').to(torch.flo
 lb = lb.repeat(opts['batch_size'], 1, 1, 1, 1).cuda()
 
 for epoch in range(opts['n_epochs']):    
-       
     for i, (x,) in enumerate(tr): # gamma [n_batch, 4, 4]
-
         for param in model.parameters():
             param.requires_grad_(False)
         model.eval()
@@ -77,7 +75,7 @@ for epoch in range(opts['n_epochs']):
         g = gtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda().requires_grad_()
 
         x = x.cuda()
-        optim_gamma = torch.optim.SGD([g], lr=0.001)
+        optim_gamma = torch.optim.SGD([g], lr=0.1)
         Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((1,2))/NF
         Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
         Rx = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb # shape of [N,F,I,M,M]
@@ -100,20 +98,26 @@ for epoch in range(opts['n_epochs']):
 
             # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
             # vj.imag = vj.imag - vj.imag
-            outs = []
-            for j in range(J):
-                outs.append(model(torch.cat((g[:,j], lb[:,j]), dim=1)))
-            out = torch.cat(outs, dim=1).permute(0,2,3,1)
-            vhat.real = threshold(out)
-            loss = loss_func(vhat, Rsshatnf.cuda())
-            optim_gamma.zero_grad()   
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_([g], max_norm=1)
-            optim_gamma.step()
-            torch.cuda.empty_cache()
+            loss_g = []
+            for ind in range(100):
+                outs = []
+                for j in range(J):
+                    outs.append(model(torch.cat((g[:,j], lb[:,j]), dim=1)))
+                out = torch.cat(outs, dim=1).permute(0,2,3,1)
+                vhat.real = threshold(out)
+                loss = loss_func(vhat.real, Rsshatnf.real)
+                optim_gamma.zero_grad()   
+                loss.backward()
+                # torch.nn.utils.clip_grad_norm_([g], max_norm=1)
+                optim_gamma.step()
+                vhat, Rsshatnf = vhat.detach(), Rsshatnf.detach()
+                loss_g.append(loss.detach().cpu().item())
+                torch.cuda.empty_cache()
+                if ind >1 and abs(loss_g[-1] - loss_g[-2])/abs(loss_g[-2]) <1e-3:
+                    print(f'g loop break at {ind}')
+                    break
             
             "compute log-likelyhood"
-            vhat = vhat.detach()
             ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
             ll_traj.append(ll.item())
             if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
