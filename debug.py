@@ -50,7 +50,7 @@ class EM:
         Rj = torch.zeros(J, M, M).to(dtype)
         return vhat, Hhat, Rb, Rj
     
-    def cluster_init(self, x , J=3, Rbscale=1e-3, showfig=False):
+    def cluster_init(self, x , J=3, init=1, Rbscale=1e-3, showfig=False):
         """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
         Given : A set X of obejects{x1,...,xn}
                 A cluster distance function dist(c1, c2)
@@ -75,9 +75,9 @@ class EM:
 
         "get data and clusters ready"
         x_norm = ((x[:,:,None,:]@x[..., None].conj())**0.5)[:,:,0]
-        x_bar = x/x_norm * (-1j*x[...,0:1].angle()).exp()  # shape of [N, F, M]
-        # x_tilde = x * (-1j*x[...,0:1].angle()).exp()
-        data = x_bar.reshape(N*F, M)
+        if init==1: x_ = x/x_norm * (-1j*x[...,0:1].angle()).exp() # shape of [N, F, M] x_bar
+        else: x_ = x * (-1j*x[...,0:1].angle()).exp() # the x_tilde in Duong's paper
+        data = x_.reshape(N*F, M)
         I = data.shape[0]
         C = [[i] for i in range(I)]  # initial cluster
 
@@ -120,13 +120,19 @@ class EM:
         return vhat, Hhat, Rb, Rj
 
     def em_func_(self, x, J=3, max_iter=501, lamb=0, init=1):
+        """init=0: random
+            init=1: x_bar original
+            init=else: x_tilde duong's paper
+        """
         #  EM algorithm for one complex sample
         N, F, M = x.shape
         NF= N*F
         Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
         if init == 0: # random init
             vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
-        else:  #hierarchical initialization
+        if init == 1: #hierarchical initialization -- x_bar
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
+        else:  #hierarchical initialization -- x_tilde
             vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J)
 
         ll_traj = []
@@ -155,8 +161,8 @@ class EM:
             Hhat = Rxshat @ Rsshat.inverse()
             Rb = Rxxhat - Hhat@Rxshat.t().conj() - \
                 Rxshat@Hhat.t().conj() + Hhat@Rsshat@Hhat.t().conj()
-            Rb = threshold(Rb.diag().real, floor=1e-20).diag().to(torch.cdouble)
-            # Rb = Rb.diag().real.diag().to(torch.cdouble)
+            # Rb = threshold(Rb.diag().real, floor=1e-20).diag().to(x.dtype)
+            Rb = Rb.diag().real.diag().to(x.dtype)
 
             "compute log-likelyhood"
             for j in range(J):
@@ -168,24 +174,16 @@ class EM:
 
         return shat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
 
-shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(awgn(x_all[0], 30), max_iter=300, init=1)
+#%%
+shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(x_all[10], max_iter=300, init=0)
+
+plt.figure()
+plt.plot(ll_traj, '-x')
 
 for i in range(3):
     plt.figure()
     plt.imshow(shat.squeeze().abs()[...,i])
     plt.title('plot of s from EM')
     plt.colorbar()
-
-c = torch.rand(100,100,3,3).to(torch.cfloat)
-for i in range(3):
-    c[:,:,i] = shat.squeeze()[...,i][..., None] @ Hhat.squeeze()[None, :, i]
-    print(c[:,:,i].norm())
-
-for i in range(3):
-    plt.figure()
-    plt.imshow(c[:,:,i].squeeze().abs()[...,i])
-    plt.title('plot of c from EM')
-    plt.colorbar()
-
 
 #%%
