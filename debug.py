@@ -211,8 +211,8 @@ def cluster(data):
     return C
 
 #%%
-# data = data.cuda()
-I = N*F
+data = torch.rand(50*50, 6)
+I = 50*50
 C = [[i] for i in range(I)]  # initial cluster
 "first cluster"
 perms = torch.combinations(torch.arange(len(C)))
@@ -220,7 +220,13 @@ d = data[perms]
 table = ((d[:,0] - d[:,1]).abs()**2).sum(dim=-1)**0.5
 from scipy.cluster.hierarchy import dendrogram, linkage
 z = linkage(table, method='average')
-dn = dendrogram(z, p=6, truncate_mode='level')
+dn = dendrogram(z, p=3, truncate_mode='level')
 
+zind = torch.tensor(z).to(torch.int)
+flag = torch.cat((torch.ones(I), torch.zeros(I)))
+c = C + [[] for i in range(I)]
+for i in range(z.shape[0]-60):
+    c[i+I] = c[zind[i][0]] + c[zind[i][1]]
+    flag[i+I], flag[zind[i][0]], flag[zind[i][1]] = 1, 0, 0
 
 
