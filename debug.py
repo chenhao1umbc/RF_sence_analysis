@@ -28,41 +28,94 @@ class EM:
     def rand_init(self, x, J=6, Hscale=1, Rbscale=100, seed=0):
         N, F, M = x.shape
         torch.torch.manual_seed(seed)
-        if x.dtype == torch.float:
-            dtype = torch.cfloat
-        if x.dtype == torch.double:
-            dtype = torch.cdouble
+        dtype = x.dtype
+
         vhat = torch.randn(N, F, J).abs().to(dtype)
         Hhat = torch.randn(M, J, dtype=dtype)*Hscale
         Rb = torch.eye(M).to(dtype)*Rbscale
         Rj = torch.zeros(J, M, M).to(dtype)
         return vhat, Hhat, Rb, Rj
     
-    def cluster_init(self, x):
+    def cluster_init(self, x , J=3, Rbscale=100, showfig=False):
+        """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
+        Given : A set X of obejects{x1,...,xn}
+                A cluster distance function dist(c1, c2)
+        for i=1 to n
+            ci = {xi}
+        end for
+        C = {c1, ..., cn}
+        I = n+1
+        While I>1 do
+            (cmin1, cmin2) = minimum dist(ci, cj) for all ci, cj in C
+            remove cmin1 and cmin2 from C
+            add {cmin1, cmin2} to C
+            I = I - 1
+        end while
+
+        However, this naive algorithm does not fit large samples. 
+
+        J is how many clusters
+
+        """   
+        dtype = x.dtype
         N, F, M = x.shape
-        if x.dtype == torch.float:
-            dtype = torch.cfloat
-        if x.dtype == torch.double:
-            dtype = torch.cdouble
 
-        x_bar = x/(x[..., None] @ x[:,:,None,:].conj())
+        "g"
+        x_norm = ((x[:,:,None,:]@x[..., None].conj())**0.5)[:,:,0]
+        x_bar = x/x_norm * (-1j*x[...,0:1].angle()).exp()  # shape of [N, F, M]
+        # x_tilde = x * (-1j*x[...,0:1].angle()).exp()
+        data = x_bar.reshape(N*F, M)
+        I = data.shape[0]
+        C = [[i] for i in range(I)]  # initial cluster
 
-        vhat, Hhat, Rb, Rj = [0]*4
+        "affinity matrix and linkage"
+        perms = torch.combinations(torch.arange(len(C)))
+        d = data[perms]
+        table = ((d[:,0] - d[:,1]).abs()**2).sum(dim=-1)**0.5
+        from scipy.cluster.hierarchy import dendrogram, linkage
+        z = linkage(table, method='average')
+        if showfig: dn = dendrogram(z, p=3, truncate_mode='level')
+
+        "find the max J cluster and sample index"
+        zind = torch.tensor(z).to(torch.int)
+        flag = torch.cat((torch.ones(I), torch.zeros(I)))
+        c = C + [[] for i in range(I)]
+        for i in range(z.shape[0]-60):
+            c[i+I] = c[zind[i][0]] + c[zind[i][1]]
+            flag[i+I], flag[zind[i][0]], flag[zind[i][1]] = 1, 0, 0
+        ind = (flag == 1).nonzero(as_tuple=True)[0]
+        dict_c = {}  # which_cluster: how_many_nodes
+        for i in range(ind.shape[0]):
+            dict_c[ind[i].item()] = len(c[ind[i]])
+        dict_c_sorted = {k:v for k,v in sorted(dict_c.items(), key=lambda x: -x[1])}
+        cs = []
+        for i, (k,v) in enumerate(dict_c_sorted.items()):
+            if i == J:
+                break
+            cs.append(c[k])
+
+        Hhat = torch.rand(M, J, dtype=dtype)
+        Rj = torch.rand(J, M, M, dtype=dtype)
+        for i in range(J):
+            d = data[torch.tensor(cs[i])] # shape of [I_cj, M]
+            hhat[:,i] = d.mean(0)
+            Rj[i] = (d[..., None] @ d[:,None,:].conj()).mean(0)
+        vhat = torch.randn(N, F, J).abs().to(dtype)
+        Rb = torch.eye(M).to(dtype)*Rbscale
+
         return vhat, Hhat, Rb, Rj
 
-    def em_func_(self, x, J=6, max_iter=501, lamb=0, init=1):
+    def em_func_(self, x, J=3, max_iter=501, lamb=0, init=1):
         #  EM algorithm for one complex sample
         N, F, M = x.shape
         NF= N*F
         Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
         if init == 0: # random init
-            vhat, Hhat, Rb, Rj = self.rand_init(J)
+            vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
         else:  #hierarchical initialization
-            pass
-
-
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J)
+            
         ll_traj = []
-
         for i in range(max_iter):
             "E-step"
             Rs = vhat.diag_embed()
