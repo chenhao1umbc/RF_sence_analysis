@@ -1,5 +1,4 @@
 #%% EM to see hierarchical initialization result
-from dataclasses import astuple
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
