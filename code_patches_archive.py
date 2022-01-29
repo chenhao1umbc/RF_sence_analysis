@@ -1131,19 +1131,21 @@ if True:
     s_all = s.abs().permute(0,2,3,1)
 
     def corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
-        for jj in permutes:
-            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+        for p in permutes:
+            temp = vh[..., torch.tensor(p)]
             s = 0
             for j in range(J):
-                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
             r.append(s)
         r = sorted(r, reverse=True)
         return r[0]/J
-        
+
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1152,7 +1154,7 @@ if True:
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
@@ -1193,6 +1195,7 @@ if True:
     s_all = s.abs().permute(0,2,3,1) 
 
     def corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1206,6 +1209,7 @@ if True:
         return r[0]/J
 
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1214,12 +1218,12 @@ if True:
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
         return r[0].item()
-
+    
     def nem_func(x, J=3, Hscale=1, Rbscale=100, max_iter=151, lamb=0, seed=1, model='', show_plot=False):
         torch.manual_seed(seed) 
         if model == '':
@@ -1392,6 +1396,7 @@ if True:
     s_all = s.abs().permute(0,2,3,1)
 
     def corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1403,8 +1408,9 @@ if True:
             r.append(s)
         r = sorted(r, reverse=True)
         return r[0]/J
-        
+
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1559,19 +1565,21 @@ if True:
     s_all = s.abs().permute(0,2,3,1) 
 
     def corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
-        for jj in permutes:
-            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+        for p in permutes:
+            temp = vh[..., torch.tensor(p)]
             s = 0
             for j in range(J):
-                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
             r.append(s)
         r = sorted(r, reverse=True)
         return r[0]/J
 
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1580,7 +1588,7 @@ if True:
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
@@ -1713,19 +1721,21 @@ if True:
     s_all = s.abs().permute(0,2,3,1) 
 
     def corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
-        for jj in permutes:
-            temp = vh[...,jj[0]], vh[...,jj[1]], vh[...,jj[2]]
+        for p in permutes:
+            temp = vh[..., torch.tensor(p)]
             s = 0
             for j in range(J):
-                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[j].flatten())[0])
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
             r.append(s)
         r = sorted(r, reverse=True)
         return r[0]/J
 
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1734,7 +1744,7 @@ if True:
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
@@ -1886,11 +1896,12 @@ if True:
     lb = l.repeat(bs, 1, 1, 1, 1).cuda()
 
     def corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
         for p in permutes:
-            temp = vh[...,torch.tensor(p)]
+            temp = vh[..., torch.tensor(p)]
             s = 0
             for j in range(J):
                 s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
@@ -1899,6 +1910,7 @@ if True:
         return r[0]/J
 
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -1907,12 +1919,12 @@ if True:
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
         return r[0].item()
-
+    
     def nem_minibatch_test(data, ginit, model, lb, bs, seed=1):
         torch.manual_seed(seed) 
         for param in model.parameters():
@@ -2033,13 +2045,14 @@ if True:
     gte = torch.cat([gte[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I_val,J,1,8,8]
     l = torch.load('../data/nem_ss/lb_c6_J188.pt')
     lb = l.repeat(bs, 1, 1, 1, 1).cuda()
-
+    
     def corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
         J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
         for p in permutes:
-            temp = vh[:,:,torch.tensor(p)]
+            temp = vh[..., torch.tensor(p)]
             s = 0
             for j in range(J):
                 s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
@@ -2048,6 +2061,7 @@ if True:
         return r[0]/J
 
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
@@ -2056,7 +2070,7 @@ if True:
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
@@ -2976,30 +2990,31 @@ if True:
     x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
     s_all = s.abs().permute(0,2,3,1) 
 
-    def s_corr(sh, s):
-        "s, sh shape of [100,100, J]"
-        J = s.shape[-1]
+    def s_corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
+        J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
         for p in permutes:
-            temp = sh[...,torch.tensor(p)]
-            res = 0
+            temp = vh[..., torch.tensor(p)]
+            s = 0
             for j in range(J):
-                res = res + abs(stats.pearsonr(s[...,j].flatten(), temp[...,j].flatten())[0])
-            r.append(res)
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
+            r.append(s)
         r = sorted(r, reverse=True)
         return r[0]/J
 
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
         for p in permutes:
-            temp = hh.squeeze()[:,torch.tensor(p)]
+            temp = hh[:,torch.tensor(p)]
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
@@ -3134,30 +3149,31 @@ if True:
     x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
     s_all = s.abs().permute(0,2,3,1) 
 
-    def s_corr(sh, s):
-        "s, sh shape of [100,100, J]"
-        J = s.shape[-1]
+    def s_corr(vh, v):
+        "vh and v are the real value with shape of [N,F,J]"
+        J = v.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
         for p in permutes:
-            temp = sh[...,torch.tensor(p)]
-            res = 0
+            temp = vh[..., torch.tensor(p)]
+            s = 0
             for j in range(J):
-                res = res + abs(stats.pearsonr(s[...,j].flatten(), temp[...,j].flatten())[0])
-            r.append(res)
+                s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
+            r.append(s)
         r = sorted(r, reverse=True)
         return r[0]/J
 
     def h_corr(h, hh):
+        "hh and h are in the shape of [M, J]"
         J = h.shape[-1]
         r = [] 
         permutes = list(itertools.permutations(list(range(J))))
         for p in permutes:
-            temp = hh.squeeze()[:,torch.tensor(p)]
+            temp = hh[:,torch.tensor(p)]
             s = 0
             for j in range(J):
                 dino = h[:,j].norm() * temp[:, j].norm()
-                nume = (temp[:, j].conj() @ h[:, j]).abs()
+                nume = (temp[:, j].conj() * h[:, j]).sum().abs()
                 s = s + nume/dino
             r.append(s/J)
         r = sorted(r, reverse=True)
