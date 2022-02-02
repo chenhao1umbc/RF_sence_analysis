@@ -49,7 +49,7 @@ class EM:
         Rj = torch.zeros(J, M, M).to(dtype)
         return vhat, Hhat, Rb, Rj
     
-    def cluster_init(self, x , J=3, init=1, Rbscale=1e-3, showfig=True):
+    def cluster_init(self, x , J=3, init=1, Rbscale=1e-3, showfig=False):
         """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
         Given : A set X of obejects{x1,...,xn}
                 A cluster distance function dist(c1, c2)
@@ -113,7 +113,7 @@ class EM:
             d = data[torch.tensor(cs[i])] # shape of [I_cj, M]
             Hhat[:,i] = d.mean(0)
             Rj[i] = (d[..., None] @ d[:,None,:].conj()).mean(0)
-        vhat = torch.randn(N, F, J).abs().to(dtype)
+        vhat = torch.ones(N, F, J).abs().to(dtype)
         Rb = torch.eye(M).to(dtype)*Rbscale
 
         return vhat, Hhat, Rb, Rj
@@ -174,7 +174,7 @@ class EM:
         return shat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
 
 #%%
-shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(x_all[10], max_iter=300, init=0)
+shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(x_all[10], max_iter=300, init=2)
 
 plt.figure()
 plt.plot(ll_traj, '-x')
