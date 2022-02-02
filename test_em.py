@@ -49,7 +49,7 @@ class EM:
         Rj = torch.zeros(J, M, M).to(dtype)
         return vhat, Hhat, Rb, Rj
     
-    def cluster_init(self, x , J=3, init=1, Rbscale=1e-3, showfig=False):
+    def cluster_init(self, x , J=3, init=1, Rbscale=1e-3, showfig=True):
         """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
         Given : A set X of obejects{x1,...,xn}
                 A cluster distance function dist(c1, c2)
@@ -129,10 +129,10 @@ class EM:
         Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
         if init == 0: # random init
             vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
-        if init == 1: #hierarchical initialization -- x_bar
+        elif init == 1: #hierarchical initialization -- x_bar
             vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
         else:  #hierarchical initialization -- x_tilde
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J)
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
 
         ll_traj = []
         for i in range(max_iter):
