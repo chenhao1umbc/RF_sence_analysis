@@ -1,24 +1,26 @@
-#%%
-from utils import *
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-plt.rcParams['figure.dpi'] = 150
-torch.set_printoptions(linewidth=160)
-torch.set_default_dtype(torch.double)
-from skimage.transform import resize
-import itertools
-import time
+# #%%
+# from utils import *
+# os.environ["CUDA_VISIBLE_DEVICES"]="0"
+# plt.rcParams['figure.dpi'] = 150
+# torch.set_printoptions(linewidth=160)
+# torch.set_default_dtype(torch.double)
+# from skimage.transform import resize
+# import itertools
+# import time
 
+#@title rid180120, M=3, same random for all samples, gamma with inner loop
 #%% this is hybrid precision, float32 for neural network, float64 for EM
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
 torch.set_printoptions(linewidth=160)
-from unet.unet_model import UNetHalf8to100_vjto1_6 as UNetHalf
+from unet.unet_model import UNetHalf8to100_vjto1_5 as UNetHalf
 from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-rid = 0 # running id
+#%%
+rid = 180120 # running id
 fig_loc = '../data/nem_ss/figures/'
 mod_loc = '../data/nem_ss/models/'
 if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
@@ -29,19 +31,19 @@ fig_loc = fig_loc + f'rid{rid}/'
 mod_loc = mod_loc + f'rid{rid}/'
 
 I = 3000 # how many samples
-M, N, F, J = 6, 100, 100, 6
+M, N, F, J = 3, 100, 100, 3
 NF = N*F
 eps = 5e-4
 opts = {}
 opts['n_ch'] = [1,1]  
-opts['batch_size'] = 24
+opts['batch_size'] = 32
 opts['EM_iter'] = 201
 opts['lr'] = 0.001
 opts['n_epochs'] = 71
 opts['d_gamma'] = 8 
 n = 5  # for stopping 
 
-d = torch.load('../data/nem_ss/tr3kM6FT100.pt')
+d = torch.load('../data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]).permute(0,2,3,1)# [sample, N, F, channel]
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
@@ -55,12 +57,12 @@ optimizer = optim.RAdam(model.parameters(),
                 weight_decay=0)
 "initial"
 vtr = torch.ones(I, N, F, J).abs().to(torch.cdouble)
-Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
-# Hhat = torch.load('Hhat_M6_hcinit.pt')
-Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*100
+# Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
+Hhat = torch.load('../data/nem_ss/HCinit_hhat_M3_FT100.pt').to(torch.cdouble).cuda()
+Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*1e-3
 gtr = torch.rand(I,J,1,opts['d_gamma'], opts['d_gamma'])
 
-#@title gamma does not have inner loop
+#%%
 for epoch in range(opts['n_epochs']):    
     for i, (x,) in enumerate(tr): # gamma [n_batch, 4, 4]
         for param in model.parameters():
@@ -72,7 +74,7 @@ for epoch in range(opts['n_epochs']):
         g = gtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda().requires_grad_()
 
         x = x.cuda()
-        optim_gamma = torch.optim.SGD([g], lr=0.001)
+        optim_gamma = torch.optim.SGD([g], lr=0.01)
         Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((1,2))/NF
         Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
         Rx = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb # shape of [N,F,I,M,M]
@@ -95,18 +97,41 @@ for epoch in range(opts['n_epochs']):
 
             # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
             # vj.imag = vj.imag - vj.imag
-            outs = []
-            for j in range(J):
-                outs.append(model(g[:,j]))
-            out = torch.cat(outs, dim=1).permute(0,2,3,1).to(torch.double)
-            vhat.real = threshold(out)
-            loss = loss_func(vhat, Rsshatnf.cuda())
-            optim_gamma.zero_grad()   
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_([g], max_norm=1)
-            optim_gamma.step()
-            torch.cuda.empty_cache()
-            
+            l0, lpre = 0, 0
+            torch.manual_seed(0)
+            m1, m2 = torch.rand(8,100).cuda(), torch.randn(8,100).cuda()
+            rec = []
+            for ig in range(100):
+                # outs = []
+                # for j in range(J):
+                    # outs.append(model(g[:,j]))
+                # out = torch.cat(outs, dim=1).permute(0,2,3,1).to(torch.double)
+                t = g@m1
+                out = (t[:,:,0].permute(0,1,3,2)@m2).permute(0,2,3,1)
+                vhat = vhat.detach()
+                vhat.real = threshold(out)
+                loss = loss_func(vhat, Rsshatnf.cuda())
+                optim_gamma.zero_grad()   
+                loss.backward()
+                rec.append(loss.detach().item())
+                if ig == 0:
+                    l0 = loss.detach().item()
+                    lpre = l0
+                else:
+                    curr = loss.detach().item()
+                    if (curr/l0).real < 5e-4 :
+                        print(f'gamma break at {ig}, due to loss decreasing slow')
+                        break
+                    # elif curr.real>lpre.real:
+                    #     print(f'gamma break at {ig}, , due to loss increasing')
+                    #     break
+                    print('diff ratio', lpre.real-curr.real/ curr.real)
+                    lpre = curr
+                print('g.grad.norm()', g.grad.norm())
+                torch.nn.utils.clip_grad_norm_([g], max_norm=10)
+                optim_gamma.step()
+                torch.cuda.empty_cache()
+               
             "compute log-likelyhood"
             vhat = vhat.detach()
             ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
@@ -183,12 +208,48 @@ for epoch in range(opts['n_epochs']):
     torch.save(model, mod_loc +f'model_rid{rid}_{epoch}.pt')
     torch.save(Hhat, mod_loc +f'Hhat_rid{rid}_{epoch}.pt')    
 
-    if epoch >10 :
-        s1, s2 = sum(loss_tr[-n*2:-n])/n, sum(loss_tr[-n:])/n
-        if s1 - s2 < 0 :
-            print('break-1')
-            break
-        print(f'{epoch}-abs((s1-s2)/s1):', abs((s1-s2)/s1))
-        if abs((s1-s2)/s1) < 5e-4 :
-            print('break-2')
-            break
+    # if epoch >10 :
+    #     s1, s2 = sum(loss_tr[-n*2:-n])/n, sum(loss_tr[-n:])/n
+    #     if s1 - s2 < 0 :
+    #         print('break-1')
+    #         break
+    #     print(f'{epoch}-abs((s1-s2)/s1):', abs((s1-s2)/s1))
+    #     if abs((s1-s2)/s1) < 5e-4 :
+    #         print('break-2')
+    #         break
+
+#%%
+#@title pytorch play with gradient clip
+torch.manual_seed(1)
+a = torch.rand(8, 8)
+x = (a.clone() + torch.randn(8,8)*1e-10).requires_grad_()
+print(x)
+
+optim = torch.optim.SGD([x], lr=0.1)
+l0, lpre = 0, 0
+la = []
+for i in range(100):
+    t = (a-x).to(torch.cdouble)
+    loss = (t**2).sum()
+    optim.zero_grad()
+    loss.backward()
+    print('x.grad.norm--', x.grad.norm())
+    # if i == 0:
+    #     l0 = loss.detach().item()
+    #     lpre = l0
+    # else:
+    #     curr = loss.detach().item()
+    #     if curr/l0 < 5e-4 or curr>lpre:
+    #         print(f'gamma break at {i}')
+    #         break
+    #     print('diff ratio', (lpre-curr)/lpre)
+    #     lpre = curr
+    la.append(loss.detach().cpu().item())
+    # if l0/la[0] <5e-4: 
+    #     print(i)
+    #     break
+    torch.nn.utils.clip_grad_norm_([x], max_norm=10)
+    print(x.grad.norm(), 'after clip')
+    optim.step()
+    
+plt.plot(la)
