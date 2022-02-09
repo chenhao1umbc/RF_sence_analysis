@@ -1068,6 +1068,80 @@ if True:
     s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
     torch.save((x[3500:], s, h), f'test500M3FT{FT}_xsh.pt')
 
+#%% Prepare real data 3classes with close angles
+    from utils import *
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    plt.rcParams['figure.dpi'] = 150
+    torch.set_printoptions(linewidth=160)
+    torch.set_default_dtype(torch.double)
+    from skimage.transform import resize
+    import itertools
+    import time
+
+    "raw data processing"
+    FT = 100
+    var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
+    data = {}
+    for i in range(6):
+        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
+        dd = (np.sum((abs(temp['x'])**2), 1)**0.5).reshape(2000, 1)
+        # dd = np.abs(temp['x']).max(axis=1).reshape(2000, 1)
+        data[i] = temp['x'] / dd  # normalized very sample to 1
+
+    np.set_printoptions(linewidth=150)
+    "To generate 5000 mixture samples"
+    # theta = np.array([15, 60, -45])*np.pi/180  #len=M, signal AOAs  
+    # h = np.exp(-1j*np.pi*np.arange(0, 3)[:,None]@np.sin(theta)[None, :])  # shape of [M, J]
+    np.random.seed(0)
+    theta1 = np.random.rand(2000, 1)*4 + 58 # 60+-2
+    theta2 = np.random.rand(2000, 1)*2 + 62 # 63+-1
+    theta3 = np.random.rand(2000, 1)*2 + 64 # 65+-1
+    thetas = np.stack([theta1, theta2, theta3], axis=2)  #shape of [6000,1,3]
+    h1 = np.exp(-1j*np.pi*np.arange(0, 3)[:,None]@np.sin(thetas))  #[I, M, J]
+    np.random.shuffle(data[0])
+    np.random.shuffle(data[2])
+    np.random.shuffle(data[5])
+    d1 = h1[:,:,0:1]@data[0][:,None,:] + h1[:,:,1:2]@data[2][:,None,:] + h1[...,2:3]@data[5][:,None,:]
+
+    np.random.seed(1)
+    theta1 = np.random.rand(2000, 1)*4 + 58 # 60+-2
+    theta2 = np.random.rand(2000, 1)*2 + 62 # 63+-1
+    theta3 = np.random.rand(2000, 1)*2 + 64 # 65+-1
+    thetas = np.stack([theta1, theta2, theta3], axis=2)  #shape of [6000,1,3]
+    h2 = np.exp(-1j*np.pi*np.arange(0, 3)[:,None]@np.sin(thetas))  #[I, M, J]
+    np.random.shuffle(data[0])
+    np.random.shuffle(data[2])
+    np.random.shuffle(data[5])
+    d2 = h2[:,:,0:1]@data[0][:,None,:] + h2[:,:,1:2]@data[2][:,None,:] + h2[...,2:3]@data[5][:,None,:]
+
+    h = np.vstack([h1, h2])
+    data_pool = np.concatenate((d1, d2), axis=0)  #[I,M,time_len]
+    *_, Z = stft(data_pool, fs=4e7, nperseg=FT, boundary=None)
+    x = torch.tensor(np.roll(Z, FT//2, axis=2))  # roll nperseg//2
+    plt.figure()
+    plt.imshow(x[0,0].abs().log(), aspect='auto', interpolation='None')
+    plt.title('One example of 3-component mixture')
+    torch.save(x[:3000], f'tr3kM3FT{FT}_ang586264.pt')
+
+    "get s and h for the val and test data"
+    *_, Z = stft(data[0][1000:1500], fs=4e7, nperseg=FT, boundary=None)
+    s1 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    *_, Z = stft(data[2][1000:1500], fs=4e7, nperseg=FT, boundary=None)
+    s2 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    *_, Z = stft(data[5][1000:1500], fs=4e7, nperseg=FT, boundary=None)
+    s3 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
+    torch.save((x[3000:3500], s, h[3000:3500]), f'val500M3FT{FT}_xsh_ang586264.pt')
+
+    *_, Z = stft(data[0][1500:], fs=4e7, nperseg=FT, boundary=None)
+    s1 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    *_, Z = stft(data[2][1500:], fs=4e7, nperseg=FT, boundary=None)
+    s2 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    *_, Z = stft(data[5][1500:], fs=4e7, nperseg=FT, boundary=None)
+    s3 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
+    s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
+    torch.save((x[3500:], s, h[3000:3500]), f'test500M3FT{FT}_xsh_ang586264.pt')
+
 #%% prepare the 6-class real data
     "raw data processing"
     FT = 100
