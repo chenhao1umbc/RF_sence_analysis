@@ -1,5 +1,4 @@
 #%% EM to see hierarchical initialization result
-from textwrap import indent
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
@@ -189,12 +188,7 @@ print(h_corr(Hhat, h[ind]))
 # print(Hhat.angle()/np.pi*180)
 # print(h[ind].angle()/np.pi*180)
 
-
-shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(x_all[0], max_iter=300, init=2)
-print(h_corr(Hhat, h[ind]))
-
-#%%
-shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(x_all[0], max_iter=300, init=2)
+shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(x_all[0], max_iter=300, init=1)
 print(h_corr(Hhat, h[ind]))
 
 plt.figure()
@@ -207,3 +201,11 @@ for i in range(3):
     plt.colorbar()
 
 #%%
+sj_hat = 0
+sj = 1
+Psj = (sj_hat*sj).sum()/sj.norm()**2
+PsTimessj_hat = c.t().conj()@s
+s_target = Psj@sj_hat
+e_itnerf = PsTimessj_hat - Psj@sj_hat
+e_noise = Psn@sj_hat - PsTimessj_hat
+e_artif = sj_hat - Psn@sj_hat
