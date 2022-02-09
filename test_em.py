@@ -49,7 +49,7 @@ class EM:
         Rj = torch.zeros(J, M, M).to(dtype)
         return vhat, Hhat, Rb, Rj
     
-    def cluster_init(self, x , J=3, init=1, Rbscale=1e-3, showfig=False):
+    def cluster_init(self, x, J=3, K=60, init=1, Rbscale=1e-3, showfig=False):
         """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
         Given : A set X of obejects{x1,...,xn}
                 A cluster distance function dist(c1, c2)
@@ -92,7 +92,7 @@ class EM:
         zind = torch.tensor(z).to(torch.int)
         flag = torch.cat((torch.ones(I), torch.zeros(I)))
         c = C + [[] for i in range(I)]
-        for i in range(z.shape[0]-60):
+        for i in range(z.shape[0]-K): # threshold of K level to stop
             c[i+I] = c[zind[i][0]] + c[zind[i][1]]
             flag[i+I], flag[zind[i][0]], flag[zind[i][1]] = 1, 0, 0
         ind = (flag == 1).nonzero(as_tuple=True)[0]
