@@ -203,9 +203,20 @@ for i in range(3):
 #%%
 sj_hat = 0
 sj = 1
+term = 0
 Psj = (sj_hat*sj).sum()/sj.norm()**2
+
+Rss = 0# Rss is the Gram matrix of the sources
+c = Rss.inv()@ (sj@s).conj().t()
+PsnTimessj_hat = PsTimessj_hat + term
 PsTimessj_hat = c.t().conj()@s
+
 s_target = Psj@sj_hat
 e_itnerf = PsTimessj_hat - Psj@sj_hat
-e_noise = Psn@sj_hat - PsTimessj_hat
-e_artif = sj_hat - Psn@sj_hat
+e_noise = PsnTimessj_hat - PsTimessj_hat
+e_artif = sj_hat - PsnTimessj_hat
+
+SDR = (s_target.norm()/(e_itnerf+e_noise+e_artif).norm()).log10()*20
+SIR = (s_target.norm()/e_itnerf.norm()).log10()*20
+SNR = ((s_target+e_itnerf).norm()/e_noise.norm()).log10()*20
+SAR = ((s_target+e_itnerf+e_noise).norm()/e_artif.norm()).log10()*20
