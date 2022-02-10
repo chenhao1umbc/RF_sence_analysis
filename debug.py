@@ -203,25 +203,32 @@ for i in range(3):
 #%%
 NF, J, N, F, M = 100, 3, 10, 10, 6
 s_hat = torch.rand(J,10,10).to(torch.complex64)
-s = torch.rand(J,10,10).to(torch.complex64)
-noise = torch.rand(M, J,10,10).to(torch.complex64)
-PsTimessj_hat = s.clone()
+s = s_hat.clone()
+# s = torch.rand(J,10,10).to(torch.complex64)
+noise = torch.rand(M,10,10).to(torch.complex64)
 
 "get s_target"
 s_target = ((s*s_hat.conj()).sum(dim=(-1,-2), keepdim=True) *s)/(s.abs()**2).sum(dim=(-1,-2), keepdim=True)
 "get e_interf"
+PsTimessj_hat = s.clone() # init. Ps times sj_hat
 Rss = s.reshape(J, NF) @ s.reshape(3, NF).conj().t()# Rss is the Gram matrix of the sources [J,J]
 for j in range(J):
     temp = (s_hat[j] * s.conj()).sum(dim=(-1,-2)) #shape of [J]
-    c = Rss.inv()@ temp[None,:].conj().t()
+    c = Rss.inverse()@ temp[None,:].conj().t()
     PsTimessj_hat[j] = (c.t().conj()@s.reshape(J, NF)).reshape(N,F)
 e_interf = PsTimessj_hat - s_target
 "get e_noise"
-e_noise = 0
+e_noise = s.clone() # init. e_noise 
+for j in range(J):
+    inner = (s_hat[j] * noise.conj()).sum(dim=(-1,-2))
+    temp = inner[:,None,None]*noise / (noise.abs()**2).sum(dim=(-1,-2), keepdim=True)
+    e_noise[j] = temp.sum(0)
 "get e_artif"
 e_artif = s_hat - e_noise -PsTimessj_hat
 
-SDR = (s_target.norm()/(e_interf+e_noise+e_artif).norm()).log10()*20
-SIR = (s_target.norm()/e_interf.norm()).log10()*20
-SNR = ((s_target+e_interf).norm()/e_noise.norm()).log10()*20
-SAR = ((s_target+e_interf+e_noise).norm()/e_artif.norm()).log10()*20
+sdr = (s_target.norm()/(e_interf+e_noise+e_artif).norm()).log10()*20
+sir = (s_target.norm()/e_interf.norm()).log10()*20
+snr = ((s_target+e_interf).norm()/e_noise.norm()).log10()*20
+sar = ((s_target+e_interf+e_noise).norm()/e_artif.norm()).log10()*20
+
+print(sdr, sir, snr, sar)
