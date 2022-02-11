@@ -24,3 +24,13 @@ class InitNet(nn.Module):
         class_output = self.classifier(flatten_component)
         normal_class_output = self.output(class_output)
         return component_output, normal_class_output
+
+
+class FCN1(nn.Module):
+    def __init__(self, shape1=16, shape2=100):
+        super().__init__()
+        self.fc = nn.Linear(shape1,shape2)
+        self.sigmoid = nn.Sigmoid()
+    
+    def forwar(self, x):
+        return self.sigmoid(self.fc(x))
