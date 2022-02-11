@@ -27,10 +27,13 @@ class InitNet(nn.Module):
 
 
 class FCN1(nn.Module):
-    def __init__(self, shape1=16, shape2=100):
+    def __init__(self, shape1=8, shape2=100):
         super().__init__()
-        self.fc = nn.Linear(shape1,shape2)
+        self.fc1 = nn.Linear(shape1,shape2)
+        self.fc2 = nn.Linear(shape1,shape2)
         self.sigmoid = nn.Sigmoid()
     
     def forwar(self, x):
-        return self.sigmoid(self.fc(x))
+        x = self.fc1(x)
+        x = self.fc2(x.permute(0,1,3,2))
+        return self.sigmoid(x)
