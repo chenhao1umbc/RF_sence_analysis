@@ -33,7 +33,7 @@ class FCN1(nn.Module):
         self.fc2 = nn.Linear(shape1,shape2)
         self.sigmoid = nn.Sigmoid()
     
-    def forwar(self, x):
+    def forward(self, x):
         x = self.fc1(x)
         x = self.fc2(x.permute(0,1,3,2))
         return self.sigmoid(x)
