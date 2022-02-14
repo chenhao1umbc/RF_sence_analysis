@@ -1,234 +1,186 @@
-#%% EM to see hierarchical initialization result
+#@title r182000, This is based on Dr. Kim's note. The key points are:
+# 1. 
+#this is hybrid precision, float32 for neural network, float64 for EM
 from utils import *
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
-plt.rcParams['figure.dpi'] = 150
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+plt.rcParams['figure.dpi'] = 100
 torch.set_printoptions(linewidth=160)
-# torch.set_default_dtype(torch.double)
-from skimage.transform import resize
-import itertools
-import time
+from unet.unet_model import UNetHalf8to100_vjto1_5 as UNetHalf
+from datetime import datetime
+print('starting date time ', datetime.now())
+torch.manual_seed(1)
 
-#%% test 
-d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh_ang586264.pt')
-h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
-ratio = d.abs().amax(dim=(1,2,3))
-x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
-s_all = s.abs().permute(0,2,3,1) 
+rid = 182000 # running id
+fig_loc = '../data/nem_ss/figures/'
+mod_loc = '../data/nem_ss/models/'
+if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
+    print('made a new folder')
+    os.mkdir(fig_loc + f'rid{rid}/')
+    os.mkdir(mod_loc + f'rid{rid}/')
+fig_loc = fig_loc + f'rid{rid}/'
+mod_loc = mod_loc + f'rid{rid}/'
 
-class EM:
-    def calc_ll_cpx2(self, x, vhat, Rj, Rb):
-        """ Rj shape of [J, M, M]
-            vhat shape of [N, F, J]
-            Rb shape of [M, M]
-            x shape of [N, F, M]
-        """
-        _, M, M = Rj.shape
-        N, F, J = vhat.shape
-        Rcj = vhat.reshape(N*F, J) @ Rj.reshape(J, M*M)
-        Rcj = Rcj.reshape(N, F, M, M)
-        Rx = Rcj + Rb 
-        l = -(np.pi*Rx.det()).log() - (x[..., None, :].conj()@Rx.inverse()@x[..., None]).squeeze()
-        return l.sum()
-    
-    def rand_init(self, x, J=6, Hscale=1, Rbscale=100, seed=0):
-        N, F, M = x.shape
-        torch.torch.manual_seed(seed)
-        dtype = x.dtype
+I = 3000 # how many samples
+M, N, F, J = 3, 100, 100, 3
+NF = N*F
+eps = 5e-4
+opts = {}
+opts['n_ch'] = [1,1]  
+opts['batch_size'] = 32
+opts['EM_iter'] = 201
+opts['lr'] = 0.001
+opts['n_epochs'] = 71
+opts['d_gamma'] = 8 
+n = 5  # for stopping 
 
-        vhat = torch.randn(N, F, J).abs().to(dtype)
-        Hhat = torch.randn(M, J, dtype=dtype)*Hscale
-        Rb = torch.eye(M).to(dtype)*Rbscale
-        Rj = torch.zeros(J, M, M).to(dtype)
-        return vhat, Hhat, Rb, Rj
-    
-    def cluster_init(self, x, J=3, K=60, init=1, Rbscale=1e-3, showfig=False):
-        """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
-        Given : A set X of obejects{x1,...,xn}
-                A cluster distance function dist(c1, c2)
-        for i=1 to n
-            ci = {xi}
-        end for
-        C = {c1, ..., cn}
-        I = n+1
-        While I>1 do
-            (cmin1, cmin2) = minimum dist(ci, cj) for all ci, cj in C
-            remove cmin1 and cmin2 from C
-            add {cmin1, cmin2} to C
-            I = I - 1
-        end while
+d = torch.load('../data/nem_ss/tr3kM3FT100.pt')
+xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]).permute(0,2,3,1)# [sample, N, F, channel]
+data = Data.TensorDataset(xtr)
+tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
-        However, this naive algorithm does not fit large samples. 
-        Here we use scipy function for the linkage.
-        J is how many clusters
-        """   
-        dtype = x.dtype
-        N, F, M = x.shape
+loss_iter, loss_tr = [], []
+model = UNetHalf(opts['n_ch'][0], opts['n_ch'][1]).cuda()
+optimizer = optim.RAdam(model.parameters(),
+                lr= opts['lr'],
+                betas=(0.9, 0.999), 
+                eps=1e-8,
+                weight_decay=0)
+"initial"
+vtr = torch.ones(I, N, F, J).abs().to(torch.cdouble)
+# Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
+Hhat = torch.load('../data/nem_ss/HCinit_hhat_M3_FT100.pt').to(torch.cdouble).cuda()
+Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*1e-3
+gtr = torch.rand(I,J,1,opts['d_gamma'], opts['d_gamma'])
 
-        "get data and clusters ready"
-        x_norm = ((x[:,:,None,:]@x[..., None].conj())**0.5)[:,:,0]
-        if init==1: x_ = x/x_norm * (-1j*x[...,0:1].angle()).exp() # shape of [N, F, M] x_bar
-        else: x_ = x * (-1j*x[...,0:1].angle()).exp() # the x_tilde in Duong's paper
-        data = x_.reshape(N*F, M)
-        I = data.shape[0]
-        C = [[i] for i in range(I)]  # initial cluster
+#@title gamma does not have inner loop
+for epoch in range(opts['n_epochs']):    
+    for i, (x,) in enumerate(tr): # gamma [n_batch, 4, 4]
+        for param in model.parameters():
+            param.requires_grad_(False)
+        model.eval()
+        #%% EM part
+        vhat = vtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()        
+        Rb = Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
+        g = gtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda().requires_grad_()
 
-        "calc. affinity matrix and linkage"
-        perms = torch.combinations(torch.arange(len(C)))
-        d = data[perms]
-        table = ((d[:,0] - d[:,1]).abs()**2).sum(dim=-1)**0.5
-        from scipy.cluster.hierarchy import dendrogram, linkage
-        z = linkage(table, method='average')
-        if showfig: dn = dendrogram(z, p=3, truncate_mode='level')
-
-        "find the max J cluster and sample index"
-        zind = torch.tensor(z).to(torch.int)
-        flag = torch.cat((torch.ones(I), torch.zeros(I)))
-        c = C + [[] for i in range(I)]
-        for i in range(z.shape[0]-K):  # threshold of K level to stop
-            c[i+I] = c[zind[i][0]] + c[zind[i][1]]
-            flag[i+I], flag[zind[i][0]], flag[zind[i][1]] = 1, 0, 0
-        ind = (flag == 1).nonzero(as_tuple=True)[0]
-        dict_c = {}  # which_cluster: how_many_nodes
-        for i in range(ind.shape[0]):
-            dict_c[ind[i].item()] = len(c[ind[i]])
-        dict_c_sorted = {k:v for k,v in sorted(dict_c.items(), key=lambda x: -x[1])}
-        cs = []
-        for i, (k,v) in enumerate(dict_c_sorted.items()):
-            if i == J:
-                break
-            cs.append(c[k])
-
-        "initil the EM variables"
-        Hhat = torch.rand(M, J, dtype=dtype)
-        Rj = torch.rand(J, M, M, dtype=dtype)
-        for i in range(J):
-            d = data[torch.tensor(cs[i])] # shape of [I_cj, M]
-            Hhat[:,i] = d.mean(0)
-            Rj[i] = (d[..., None] @ d[:,None,:].conj()).mean(0)
-        vhat = torch.ones(N, F, J).abs().to(dtype)
-        Rb = torch.eye(M).to(dtype)*Rbscale
-
-        return vhat, Hhat, Rb, Rj
-
-    def em_func_(self, x, J=3, max_iter=501, lamb=0, init=1):
-        """init=0: random
-            init=1: x_bar original
-            init=else: x_tilde duong's paper
-        """
-        #  EM algorithm for one complex sample
-        N, F, M = x.shape
-        NF= N*F
-        Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
-        if init == 0: # random init
-            vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
-        elif init == 1: #hierarchical initialization -- x_bar
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
-        else:  #hierarchical initialization -- x_tilde
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
-
+        x = x.cuda()
+        optim_gamma = torch.optim.SGD([g], lr=0.001)
+        Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((1,2))/NF
+        Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
+        Rx = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb # shape of [N,F,I,M,M]
         ll_traj = []
-        for i in range(max_iter):
-            "E-step"
-            Rs = vhat.diag_embed()
-            Rcj = Hhat @ Rs @ Hhat.t().conj()
-            Rx = Rcj + Rb
-            W = Rs @ Hhat.t().conj() @ Rx.inverse()
-            shat = W @ x[...,None]
-            Rsshatnf = shat @ shat.transpose(-1,-2).conj() + Rs - W@Hhat@Rs
 
-            Rsshat = Rsshatnf.sum([0,1])/NF
-            Rxshat = (x[..., None] @ shat.transpose(-1,-2).conj()).sum((0,1))/NF
+        for ii in range(opts['EM_iter']):
+            "E-step"
+            W = Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() @ Rx.inverse()  # shape of [N, F, I, J, M]
+            shat = W.permute(2,0,1,3,4) @ x[...,None]
+            Rsshatnf = shat @ shat.transpose(-1,-2).conj() + Rs - (W@Hhat@Rs.permute(1,2,0,3,4)).permute(2,0,1,3,4)
+            Rsshat = Rsshatnf.sum([1,2])/NF # shape of [I, J, J]
+            Rxshat = (x[..., None] @ shat.transpose(-1,-2).conj()).sum((1,2))/NF # shape of [I, M, J]
 
             "M-step"
-            if lamb<0:
-                raise ValueError('lambda should be not negative')
-            elif lamb>0:
-                y = Rsshatnf.diagonal(dim1=-1, dim2=-2)
-                vhat = -0.5/lamb + 0.5*(1+4*lamb*y)**0.5/lamb
-            else:
-                vhat = Rsshatnf.diagonal(dim1=-1, dim2=-2)
-            vhat.real = threshold(vhat.real, floor=1e-10, ceiling=10)
-            vhat.imag = vhat.imag - vhat.imag
-            Hhat = Rxshat @ Rsshat.inverse()
-            Rb = Rxxhat - Hhat@Rxshat.t().conj() - \
-                Rxshat@Hhat.t().conj() + Hhat@Rsshat@Hhat.t().conj()
-            # Rb = threshold(Rb.diag().real, floor=1e-20).diag().to(x.dtype)
-            Rb = Rb.diag().real.diag().to(x.dtype)
+            Hhat = Rxshat @ Rsshat.inverse() # shape of [I, M, J]
+            Rb = Rxxhat - Hhat@Rxshat.transpose(-1,-2).conj() - \
+                Rxshat@Hhat.transpose(-1,-2).conj() + Hhat@Rsshat@Hhat.transpose(-1,-2).conj()
+            Rb = Rb.diagonal(dim1=-1, dim2=-2).diag_embed()
+            Rb.imag = Rb.imag - Rb.imag
 
-            "compute log-likelyhood"
+            # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
+            # vj.imag = vj.imag - vj.imag
+            outs = []
             for j in range(J):
-                Rj[j] = Hhat[:, j][..., None] @ Hhat[:, j][..., None].t().conj()
-            ll_traj.append(self.calc_ll_cpx2(x, vhat, Rj, Rb).item())
-            if i > 30 and abs((ll_traj[i] - ll_traj[i-3])/ll_traj[i-3]) <1e-4:
-                print(f'EM early stop at iter {i}')
+                outs.append(model(g[:,j]))
+            out = torch.cat(outs, dim=1).permute(0,2,3,1).to(torch.double)
+            vhat.real = threshold(out)
+            loss = loss_func(vhat, Rsshatnf.cuda())
+            optim_gamma.zero_grad()   
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_([g], max_norm=1)
+            optim_gamma.step()
+            torch.cuda.empty_cache()
+            
+            "compute log-likelyhood"
+            vhat = vhat.detach()
+            ll, Rs, Rx = log_likelihood(x, vhat, Hhat, Rb)
+            ll_traj.append(ll.item())
+            if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
+            if ii > 5 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3])<eps:
+                print(f'EM early stop at iter {ii}, batch {i}, epoch {epoch}')
                 break
+    
+        print(f'batch {i} is done')
+        if i == 0 :
+            plt.figure()
+            plt.plot(ll_traj, '-x')
+            plt.title(f'the log-likelihood of the first batch at epoch {epoch}')
+            plt.savefig(fig_loc + f'id{rid}_log-likelihood_epoch{epoch}')
 
-        return shat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
+            plt.figure()
+            plt.imshow(vhat[0,...,0].real.cpu())
+            plt.colorbar()
+            plt.title(f'1st source of vj in first sample from the first batch at epoch {epoch}')
+            plt.savefig(fig_loc + f'id{rid}_vj1_epoch{epoch}')
 
-def h_corr(h, hh):
-    "hh and h are in the shape of [M, J]"
-    J = h.shape[-1]
-    r = [] 
-    permutes = list(itertools.permutations(list(range(J))))
-    for p in permutes:
-        temp = hh[:,torch.tensor(p)]
-        s = 0
+            plt.figure()
+            plt.imshow(vhat[0,...,1].real.cpu())
+            plt.colorbar()
+            plt.title(f'2nd source of vj in first sample from the first batch at epoch {epoch}')
+            plt.savefig(fig_loc + f'id{rid}_vj2_epoch{epoch}')
+
+            plt.figure()
+            plt.imshow(vhat[0,...,2].real.cpu())
+            plt.colorbar()
+            plt.title(f'3rd source of vj in first sample from the first batch at epoch {epoch}')
+            plt.savefig(fig_loc + f'id{rid}_vj3_epoch{epoch}')
+
+        #%% update variable
+        with torch.no_grad():
+            gtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = g.cpu()
+            vtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = vhat.cpu()
+            # Htr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Hhat.cpu()
+            Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Rb.cpu()
+        g.requires_grad_(False)
+        model.train()
+        for param in model.parameters():
+            param.requires_grad_(True)
+
+        outs = []
         for j in range(J):
-            dino = h[:,j].norm() * temp[:, j].norm()
-            nume = (temp[:, j].conj() * h[:, j]).sum().abs()
-            s = s + nume/dino
-        r.append(s/J)
-    r = sorted(r, reverse=True)
-    return r[0].item()
+            outs.append(model(g[:,j]))
+        out = torch.cat(outs, dim=1).permute(0,2,3,1).to(torch.double)
+        vhat.real = threshold(out)
+        optimizer.zero_grad()         
+        ll, *_ = log_likelihood(x, vhat, Hhat, Rb)
+        loss = -ll
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+        optimizer.step()
+        torch.cuda.empty_cache()
+        loss_iter.append(loss.detach().cpu().item())
 
-#%%
-ind = 10
-vhat, Hhat, Rb, Rj = EM().cluster_init(x_all[ind])
-print(h_corr(Hhat, h[ind]))
-# print(Hhat.angle()/np.pi*180)
-# print(h[ind].angle()/np.pi*180)
-
-shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(x_all[0], max_iter=300, init=1)
-print(h_corr(Hhat, h[ind]))
-
-plt.figure()
-plt.plot(ll_traj, '-x')
-
-for i in range(3):
+    print(f'done with epoch{epoch}')
     plt.figure()
-    plt.imshow(shat.squeeze().abs()[...,i])
-    plt.title('plot of s from EM')
-    plt.colorbar()
+    plt.plot(loss_iter, '-xr')
+    plt.title(f'Loss fuction of all the iterations at epoch{epoch}')
+    plt.savefig(fig_loc + f'id{rid}_LossFunAll_epoch{epoch}')
 
-#%%
-NF, J, N, F, M = 100, 3, 10, 10, 6
-s_hat = torch.rand(J,10,10).to(torch.complex64)
-s = s_hat.clone()
-# s = torch.rand(J,10,10).to(torch.complex64)
-noise = torch.rand(M,10,10).to(torch.complex64)
+    loss_tr.append(loss.detach().cpu().item())
+    plt.figure()
+    plt.plot(loss_tr, '-or')
+    plt.title(f'Loss fuction at epoch{epoch}')
+    plt.savefig(fig_loc + f'id{rid}_LossFun_epoch{epoch}')
 
-"get s_target"
-s_target = ((s*s_hat.conj()).sum(dim=(-1,-2), keepdim=True) *s)/(s.abs()**2).sum(dim=(-1,-2), keepdim=True)
-"get e_interf"
-PsTimessj_hat = s.clone() # init. Ps times sj_hat
-Rss = s.reshape(J, NF) @ s.reshape(3, NF).conj().t()# Rss is the Gram matrix of the sources [J,J]
-for j in range(J):
-    temp = (s_hat[j] * s.conj()).sum(dim=(-1,-2)) #shape of [J]
-    c = Rss.inverse()@ temp[None,:].conj().t()
-    PsTimessj_hat[j] = (c.t().conj()@s.reshape(J, NF)).reshape(N,F)
-e_interf = PsTimessj_hat - s_target
-"get e_noise"
-e_noise = s.clone() # init. e_noise 
-for j in range(J):
-    inner = (s_hat[j] * noise.conj()).sum(dim=(-1,-2))
-    temp = inner[:,None,None]*noise / (noise.abs()**2).sum(dim=(-1,-2), keepdim=True)
-    e_noise[j] = temp.sum(0)
-"get e_artif"
-e_artif = s_hat - e_noise -PsTimessj_hat
+    plt.close('all')  # to avoid warnings
+    torch.save(loss_tr, mod_loc +f'loss_rid{rid}.pt')
+    torch.save(model, mod_loc +f'model_rid{rid}_{epoch}.pt')
+    torch.save(Hhat, mod_loc +f'Hhat_rid{rid}_{epoch}.pt')    
 
-sdr = (s_target.norm()/(e_interf+e_noise+e_artif).norm()).log10()*20
-sir = (s_target.norm()/e_interf.norm()).log10()*20
-snr = ((s_target+e_interf).norm()/e_noise.norm()).log10()*20
-sar = ((s_target+e_interf+e_noise).norm()/e_artif.norm()).log10()*20
-
-print(sdr, sir, snr, sar)
+    # if epoch >10 :
+    #     s1, s2 = sum(loss_tr[-n*2:-n])/n, sum(loss_tr[-n:])/n
+    #     if s1 - s2 < 0 :
+    #         print('break-1')
+    #         break
+    #     print(f'{epoch}-abs((s1-s2)/s1):', abs((s1-s2)/s1))
+    #     if abs((s1-s2)/s1) < 5e-4 :
+    #         print('break-2')
+    #         break
