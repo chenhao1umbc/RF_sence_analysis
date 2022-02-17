@@ -41,7 +41,8 @@ class LinearBlock(nn.Module):
 
 
 class VAE1(nn.Module):
-    "This is convolutional version -- ref UNet"
+    """This is convolutional version -- ref UNet
+    Input shape [I,M,N,F], e.g.[32,3,100,100]"""
     def __init__(self, M=3, K=3):
         super(VAE1, self).__init__()
         dz = 32
@@ -80,7 +81,8 @@ class VAE1(nn.Module):
 
 
 class VAE2(nn.Module):
-    "This is MLP version  -- ref VAESS"
+    """This is MLP version  -- ref VAESS
+    Input shape [I,MNF], e.g.[32, 3*100*100]"""
     def __init__(self, dimx=30000, K=3):
         super(VAE2, self).__init__()
 
