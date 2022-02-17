@@ -8,10 +8,16 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-from vae_model import VAE
+#%%
+from vae_model import VAE1 as VAE
 model = VAE().cuda()
 x = torch.rand(32,3,100,100).cuda()
 b = model(x)
 print('Finishing time', datetime.now())
 
 #%%
+from vae_model import VAE2 as VAE
+model = VAE().cuda()
+x = torch.rand(32,3*100*100).cuda()
+b = model(x)
+print('Finishing time', datetime.now())
