@@ -7,7 +7,7 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-def loss_vae(x, x_hat, z, mu, logvar, beta=0.5):
+def loss_vae(x, x_hat, z, mu, logvar, beta=1):
     """This is a regular beta-vae loss
 
     Args:
@@ -26,7 +26,7 @@ def loss_vae(x, x_hat, z, mu, logvar, beta=0.5):
     return loss
 
 #%%
-from vae_model import VAE1 as VAE
+from vae_model import VAE2 as VAE
 rid = 0 # running id
 fig_loc = '/home/chenhao1/Hpython/data/nem_ss/figures/'
 mod_loc = '/home/chenhao1/Hpython/data/nem_ss/models/'
@@ -44,11 +44,11 @@ eps = 5e-4
 opts = {}
 opts['batch_size'] = 64
 opts['lr'] = 1e-4
-opts['n_epochs'] = 10 
+opts['n_epochs'] = 301
 
 d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
-xtr = xtr.abs().to(torch.float)
+xtr = xtr.abs().to(torch.float).reshape(I, 3*10000)
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
@@ -73,16 +73,13 @@ for epoch in range(opts['n_epochs']):
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
         optimizer.step()
         torch.cuda.empty_cache()
-        if not loss.detach().isnan(): 
-            loss_iter.append(loss.detach().cpu().item())
-        else:
-            print(error)
-        if i%10 == 0: print(f'done with iter {i}')
 
     loss_tr.append(loss.detach().cpu().item())
-    plt.figure()
-    plt.plot(loss_tr, '-or')
-    plt.title(f'Loss fuction at epoch{epoch}')
-    plt.show()
+    if epoch%10 == 0:
+        plt.figure()
+        plt.plot(loss_tr, '-or')
+        plt.title(f'Loss fuction at epoch{epoch}')
+        plt.show()
 
 # %%
+torch.cuda.is_available()

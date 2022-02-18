@@ -86,17 +86,18 @@ class VAE2(nn.Module):
     def __init__(self, dimx=30000, K=3):
         super(VAE2, self).__init__()
 
-        dz = 32
+        self.K = K
+        self.dz = 32
         self.encoder = nn.Sequential(
             LinearBlock(dimx, 2560),
             LinearBlock(2560, 2048),
             LinearBlock(2048, 1536),
             LinearBlock(1536, 1024),
             LinearBlock(1024, 512),
-            nn.Linear(512, 2*dz*K)
+            nn.Linear(512, 2*self.dz*K)
             )
         self.decoder = nn.Sequential(
-            LinearBlock(dz*K, 512),
+            LinearBlock(self.dz, 512),
             LinearBlock(512, 1024),
             LinearBlock(1024, 1536),
             LinearBlock(1536, 2048),
@@ -116,7 +117,7 @@ class VAE2(nn.Module):
         logvar = dz[:,1::2]
         z = self.reparameterize(mu, logvar)
         "Decoder"
-        xr = self.decoder(z)
-        x_hat = xr.reshape(x.shape)
+        sources = self.decoder(z.view(-1,self.dz))
+        x_hat = sources.view(-1,self.K, x.shape[-1]).sum(1)
 
         return x_hat, z, mu, logvar
