@@ -1793,13 +1793,13 @@ class Model171010(nn.Module):
 
 class SBD1(nn.Module):
     """This is spatial broadcast decoder (SBD) version
-    Input shape [I, n_gamma], e.g.[32,64]"""
-    def __init__(self, dz=32, im_size=100):
+    Input shape [I, d_gamma], e.g.[32,64]"""
+    def __init__(self, dz=32, im_size=100, max_ch=128):
         super(SBD1, self).__init__()
         self.decoder = nn.Sequential(
-            DoubleConv(in_channels=dz, out_channels=64),
-            DoubleConv(in_channels=64, out_channels=32),
-            OutConv(32, 1),
+            DoubleConv(in_channels=dz+2, out_channels=max_ch),
+            DoubleConv(in_channels=max_ch, out_channels=max_ch//2),
+            OutConv(max_ch//2, 1),
             nn.Sigmoid()
             ) 
 
