@@ -48,12 +48,12 @@ opts['n_epochs'] = 301
 
 d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
-xtr = xtr.abs().to(torch.float).reshape(I, 3*10000)
+xtr = xtr[:,0].abs().to(torch.float).reshape(I, 10000)
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
 loss_iter, loss_tr = [], []
-model = VAE().cuda()
+model = VAE(10000, 3).cuda()
 optimizer = optim.RAdam(model.parameters(),
                 lr= opts['lr'],
                 betas=(0.9, 0.999), 
@@ -67,12 +67,13 @@ for epoch in range(opts['n_epochs']):
     for i, (x,) in enumerate(tr): 
         x = x.cuda()
         optimizer.zero_grad()         
-        x_hat, z, mu, logvar = model(x)
+        x_hat, z, mu, logvar, s = model(x)
         loss = loss_vae(x, x_hat, z, mu, logvar)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
         optimizer.step()
         torch.cuda.empty_cache()
+        if loss.isnan() : print(nan)
 
     loss_tr.append(loss.detach().cpu().item())
     if epoch%10 == 0:
@@ -81,5 +82,10 @@ for epoch in range(opts['n_epochs']):
         plt.title(f'Loss fuction at epoch{epoch}')
         plt.show()
 
+        plt.figure()
+        plt.imshow(x_hat.detach().cpu().abs().reshape(-1,100,100)[0])
+        plt.title('first sample of channel 1')
+        plt.show()
+
+print('done')
 # %%
-torch.cuda.is_available()

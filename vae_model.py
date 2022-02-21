@@ -118,6 +118,47 @@ class VAE2(nn.Module):
         z = self.reparameterize(mu, logvar)
         "Decoder"
         sources = self.decoder(z.view(-1,self.dz))
-        x_hat = sources.view(-1,self.K, x.shape[-1]).sum(1)
+        s = sources.view(-1,self.K, x.shape[-1])
+        x_hat = s.sum(1)
+
+        return x_hat, z, mu, logvar, s
+
+
+class VAE3(nn.Module):
+    """This is spatial broadcast decoder (SBD) version
+    Input shape [I,M,N,F], e.g.[32,3,100,100]"""
+    def __init__(self, M=3, K=3):
+        super(VAE1, self).__init__()
+        dz = 32
+        self.K = K
+        self.encoder = nn.Sequential(
+            Down(in_channels=M, out_channels=64),
+            Down(in_channels=64, out_channels=K),
+            )
+        self.fc1 = nn.Linear(25*25*K, 2*dz*K)
+        self.fc2 = nn.Linear(dz*K, 25*25*K)
+        self.decoder = nn.Sequential(
+            Up_(in_channels=K, out_channels=64),
+            Up_(in_channels=64, out_channels=M),
+            ) 
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def forward(self, x):
+        "Encoder"
+        x = self.encoder(x)
+        sizes = x.shape
+        "Get latent variable"
+        dz = self.fc1(x.reshape(sizes[0],-1))
+        mu = dz[:,::2]
+        logvar = dz[:,1::2]
+        z = self.reparameterize(mu, logvar)
+        "Decoder"
+        x = self.fc2(z)
+        xr = x.reshape(sizes[0],self.K,25,25)
+        x_hat = self.decoder(xr)
 
         return x_hat, z, mu, logvar
