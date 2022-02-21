@@ -1791,6 +1791,42 @@ class Model171010(nn.Module):
         return out.exp()
 
 
+class SBD1(nn.Module):
+    """This is spatial broadcast decoder (SBD) version
+    Input shape [I, n_gamma], e.g.[32,64]"""
+    def __init__(self, dz=32, im_size=100):
+        super(SBD1, self).__init__()
+        self.decoder = nn.Sequential(
+            DoubleConv(in_channels=dz, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            OutConv(32, 1),
+            nn.Sigmoid()
+            ) 
+
+        self.im_size = im_size
+        x = torch.linspace(-1, 1, im_size)
+        y = torch.linspace(-1, 1, im_size)
+        x_grid, y_grid = torch.meshgrid(x, y)
+        # Add as constant, with extra dims for N and C
+        self.register_buffer('x_grid', x_grid.view((1, 1) + x_grid.shape))
+        self.register_buffer('y_grid', y_grid.view((1, 1) + y_grid.shape))
+
+    def forward(self, gamma):
+        batch_size = gamma.size(0)
+        # View z as 4D tensor to be tiled across new H and W dimensions
+        # Shape: NxDx1x1
+        x = gamma.view(gamma.shape + (1, 1))
+        x = x.expand(-1, -1, self.im_size, self.im_size)
+        # Expand grids to batches and concatenate on the channel dimension
+        # Shape: Nx(D+2)xim_sizexim_size
+        zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
+                       self.y_grid.expand(batch_size, -1, -1, -1), x), dim=1)
+        x_hat = self.decoder(zbd)
+        out = x_hat/x_hat.detach().amax(keepdim=True, dim=(-1,-2))
+
+        return out
+
+
 # Full UNet shape structure
 class UNet8to100(nn.Module):
     "Too large to train"

@@ -127,7 +127,7 @@ class VAE2(nn.Module):
 class VAE3(nn.Module):
     """This is spatial broadcast decoder (SBD) version
     Input shape [I,M,N,F], e.g.[32,3,100,100]"""
-    def __init__(self, M=3, K=3):
+    def __init__(self, M=3, K=3, im_size=100):
         super(VAE1, self).__init__()
         dz = 32
         self.K = K
@@ -138,10 +138,18 @@ class VAE3(nn.Module):
         self.fc1 = nn.Linear(25*25*K, 2*dz*K)
         self.fc2 = nn.Linear(dz*K, 25*25*K)
         self.decoder = nn.Sequential(
-            Up_(in_channels=K, out_channels=64),
-            Up_(in_channels=64, out_channels=M),
+            Down(in_channels=dz*K, out_channels=64),
+            Down(in_channels=64, out_channels=M),
             ) 
 
+        self.im_size = im_size
+        x = torch.linspace(-1, 1, im_size)
+        y = torch.linspace(-1, 1, im_size)
+        x_grid, y_grid = torch.meshgrid(x, y)
+        # Add as constant, with extra dims for N and C
+        self.register_buffer('x_grid', x_grid.view((1, 1) + x_grid.shape))
+        self.register_buffer('y_grid', y_grid.view((1, 1) + y_grid.shape))
+    
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
@@ -156,9 +164,21 @@ class VAE3(nn.Module):
         mu = dz[:,::2]
         logvar = dz[:,1::2]
         z = self.reparameterize(mu, logvar)
+
         "Decoder"
-        x = self.fc2(z)
-        xr = x.reshape(sizes[0],self.K,25,25)
-        x_hat = self.decoder(xr)
+        batch_size = z.size(0)
+        # View z as 4D tensor to be tiled across new H and W dimensions
+        # Shape: NxDx1x1
+        z = z.view(z.shape + (1, 1))
+
+        # Tile across to match image size
+        # Shape: NxDx64x64
+        z = z.expand(-1, -1, self.im_size, self.im_size)
+
+        # Expand grids to batches and concatenate on the channel dimension
+        # Shape: Nx(D+2)x64x64
+        zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
+                       self.y_grid.expand(batch_size, -1, -1, -1), z), dim=1)
+        x_hat = self.decoder(zbd)
 
         return x_hat, z, mu, logvar
