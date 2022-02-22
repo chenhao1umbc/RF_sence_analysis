@@ -95,7 +95,6 @@ class Up1(nn.Module):
 
 class SingleConv(nn.Module):
     """(convolution => [BN] => ReLU)"""
-
     def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
         if not mid_channels:
