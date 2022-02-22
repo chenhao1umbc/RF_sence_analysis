@@ -44,7 +44,7 @@ eps = 5e-4
 opts = {}
 opts['batch_size'] = 64
 opts['lr'] = 1e-4
-opts['n_epochs'] = 301
+opts['n_epochs'] = 100
 
 d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]

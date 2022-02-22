@@ -88,21 +88,23 @@ class VAE2(nn.Module):
 
         self.K = K
         self.dz = 32
+        chans = (700, 600, 500, 400, 300)
+        # chans = (2560, 2048, 1536, 1024, 512)
         self.encoder = nn.Sequential(
-            LinearBlock(dimx, 2560),
-            LinearBlock(2560, 2048),
-            LinearBlock(2048, 1536),
-            LinearBlock(1536, 1024),
-            LinearBlock(1024, 512),
+            LinearBlock(self.dimx, chans[0]),
+            LinearBlock(chans[0],chans[1]),
+            LinearBlock(chans[1],chans[2]),
+            LinearBlock(chans[2],chans[3]),
+            LinearBlock(chans[3],chans[4]),
             nn.Linear(512, 2*self.dz*K)
             )
         self.decoder = nn.Sequential(
-            LinearBlock(self.dz, 512),
-            LinearBlock(512, 1024),
-            LinearBlock(1024, 1536),
-            LinearBlock(1536, 2048),
-            LinearBlock(2048, 2560),
-            nn.Linear(2560, dimx)            
+            LinearBlock(self.dimz, chans[4]),
+            LinearBlock(chans[4],chans[3]),
+            LinearBlock(chans[3],chans[2]),
+            LinearBlock(chans[2],chans[1]),
+            LinearBlock(chans[1],chans[0]),
+            LinearBlock(chans[0],self.dimx,activation=False),
             )
 
     def reparameterize(self, mu, logvar):
@@ -112,9 +114,9 @@ class VAE2(nn.Module):
 
     def forward(self, x):
         "Encoder and Get latent variable"
-        dz = self.encoder(x)
-        mu = dz[:,::2]
-        logvar = dz[:,1::2]
+        zz = self.encoder(x)
+        mu = zz[:,::2]
+        logvar = zz[:,1::2]
         z = self.reparameterize(mu, logvar)
         "Decoder"
         sources = self.decoder(z.view(-1,self.dz))
