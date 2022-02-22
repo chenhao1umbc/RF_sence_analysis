@@ -1836,7 +1836,7 @@ class SBD2(nn.Module):
             DoubleConv(in_channels=dz+2, out_channels=max_ch),
             DoubleConv(in_channels=max_ch, out_channels=max_ch//2),
             DoubleConv(in_channels=max_ch//2, out_channels=max_ch//4),
-            OutConv(max_ch//2, 1),
+            OutConv(max_ch//4, 1),
             nn.Sigmoid()
             ) 
 
