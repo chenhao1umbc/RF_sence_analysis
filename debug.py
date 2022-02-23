@@ -6,6 +6,7 @@ torch.set_printoptions(linewidth=160)
 from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
+import pandas as pd
 
 def loss_vae(x, x_hat, z, mu, logvar, beta=1):
     """This is a regular beta-vae loss
@@ -42,30 +43,29 @@ M, N, F, J = 3, 100, 100, 3
 NF = N*F
 eps = 5e-4
 opts = {}
-opts['batch_size'] = 64
+opts['batch_size'] = 128
 opts['lr'] = 1e-4
-opts['n_epochs'] = 100
+opts['n_epochs'] = 5000
+K = 2
 
-d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM3FT100.pt')
-xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
-xtr = xtr[:,0].abs().to(torch.float).reshape(I, 10000)
+#%%
+dd = pd.read_csv("../data/mnist_train.csv", delimiter=",", header=None).values
+lb, d = torch.from_numpy(dd[:,0]), torch.from_numpy(dd[:,1:])
+xtr = (d/d.abs().amax(dim=1, keepdim=True).to(torch.float32)).cuda() # [sample, D)
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
 loss_iter, loss_tr = [], []
-model = VAE(10000, 3).cuda()
-optimizer = optim.RAdam(model.parameters(),
+model = VAE(784, 1).cuda()
+optimizer = torch.optim.Adam(model.parameters(),
                 lr= opts['lr'],
                 betas=(0.9, 0.999), 
                 eps=1e-8,
                 weight_decay=0)
-"initialize"
-Hhat = torch.randn(M, J).to(torch.cfloat).cuda()
-Rbtr = torch.ones(I, M).diag_embed().to(torch.cfloat)*100
-
+rec = []
 for epoch in range(opts['n_epochs']):    
     for i, (x,) in enumerate(tr): 
-        x = x.cuda()
+        # x = x.cuda()
         optimizer.zero_grad()         
         x_hat, z, mu, logvar, s = model(x)
         loss = loss_vae(x, x_hat, z, mu, logvar)
@@ -76,14 +76,14 @@ for epoch in range(opts['n_epochs']):
         if loss.isnan() : print(nan)
 
     loss_tr.append(loss.detach().cpu().item())
-    if epoch%10 == 0:
+    if epoch%50 == 0:
         plt.figure()
         plt.plot(loss_tr, '-or')
         plt.title(f'Loss fuction at epoch{epoch}')
         plt.show()
 
         plt.figure()
-        plt.imshow(x_hat.detach().cpu().abs().reshape(-1,100,100)[0])
+        plt.imshow(x_hat.detach().cpu().abs().reshape(-1,28,28)[0])
         plt.title('first sample of channel 1')
         plt.show()
 
