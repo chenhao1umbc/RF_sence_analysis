@@ -130,18 +130,18 @@ class VAE3(nn.Module):
     """This is spatial broadcast decoder (SBD) version
     Input shape [I,M,N,F], e.g.[32,3,100,100]"""
     def __init__(self, M=3, K=3, im_size=100):
-        super(VAE1, self).__init__()
-        dz = 32
-        self.K = K
+        super().__init__()
+        self.dz = 32
+        self.K, self.M = K, M
         self.encoder = nn.Sequential(
             Down(in_channels=M, out_channels=64),
             Down(in_channels=64, out_channels=K),
             )
-        self.fc1 = nn.Linear(25*25*K, 2*dz*K)
-        self.fc2 = nn.Linear(dz*K, 25*25*K)
+        self.fc1 = nn.Linear(25*25*K, 2*self.dz*K)
+        self.fc2 = nn.Linear(self.dz*K, 25*25*K)
         self.decoder = nn.Sequential(
-            Down(in_channels=dz*K, out_channels=64),
-            Down(in_channels=64, out_channels=M),
+            Down(in_channels=self.dz, out_channels=64),
+            Down(in_channels=64, out_channels=M*K),
             ) 
 
         self.im_size = im_size
@@ -162,25 +162,28 @@ class VAE3(nn.Module):
         x = self.encoder(x)
         sizes = x.shape
         "Get latent variable"
-        dz = self.fc1(x.reshape(sizes[0],-1))
-        mu = dz[:,::2]
-        logvar = dz[:,1::2]
+        zz = self.fc1(x.reshape(sizes[0],-1))
+        mu = zz[:,::2]
+        logvar = zz[:,1::2]
         z = self.reparameterize(mu, logvar)
 
         "Decoder"
         batch_size = z.size(0)
-        # View z as 4D tensor to be tiled across new H and W dimensions
-        # Shape: NxDx1x1
-        z = z.view(z.shape + (1, 1))
+        rz = z.reshape(-1,self.K, self.dz)
+        for i in range(self.K):
+            # View z as 4D tensor to be tiled across new H and W dimensions
+            # Shape: NxDx1x1
+            zr = rz[:,i].view(rz[:,i].shape + (1, 1))
 
-        # Tile across to match image size
-        # Shape: NxDx64x64
-        z = z.expand(-1, -1, self.im_size, self.im_size)
+            # Tile across to match image size
+            # Shape: NxDx64x64
+            zr = zr.expand(-1, -1, self.im_size, self.im_size)
 
-        # Expand grids to batches and concatenate on the channel dimension
-        # Shape: Nx(D+2)x64x64
-        zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
-                       self.y_grid.expand(batch_size, -1, -1, -1), z), dim=1)
-        x_hat = self.decoder(zbd)
+            # Expand grids to batches and concatenate on the channel dimension
+            # Shape: Nx(dz*K+2)x64x64
+            zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
+                        self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1)
+            ss = self.decoder(zbd)
+        x_hat = ss.reshape(batch_size, self.M, self.K, self.im_size, self.im_size).sum(2)
 
         return x_hat, z, mu, logvar

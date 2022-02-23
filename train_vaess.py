@@ -25,7 +25,7 @@ def loss_vae(x, x_hat, mu, logvar, beta=1):
     return loss
 
 #%%
-from vae_model import VAE2 as VAE
+from vae_model import VAE3 as VAE
 rid = 0 # running id
 fig_loc = '/home/chenhao1/Hpython/data/nem_ss/figures/'
 mod_loc = '/home/chenhao1/Hpython/data/nem_ss/models/'
@@ -42,17 +42,17 @@ NF = N*F
 eps = 5e-4
 opts = {}
 opts['batch_size'] = 64
-opts['lr'] = 1e-4
+opts['lr'] = 1e-3
 opts['n_epochs'] = 500
 
 d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
-xtr = xtr[:,0].abs().to(torch.float).reshape(I, 10000)
+xtr = xtr.abs().to(torch.float)
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
 loss_iter, loss_tr = [], []
-model = VAE(10000, 3).cuda()
+model = VAE(3,3,100).cuda()
 optimizer = torch.optim.Adam(model.parameters(),
                 lr= opts['lr'],
                 betas=(0.9, 0.999), 
@@ -72,7 +72,6 @@ for epoch in range(opts['n_epochs']):
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
         optimizer.step()
         torch.cuda.empty_cache()
-        if loss.isnan() : print(nan)
 
     loss_tr.append(loss.detach().cpu().item())
     if epoch%50 == 0:
