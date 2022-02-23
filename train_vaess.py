@@ -22,7 +22,7 @@ def loss_vae(x, x_hat, z, mu, logvar, beta=1):
         _type_: _description_
     """
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    loss = ((x-x_hat).abs()**2).sum() - beta*kl
+    loss = ((x-x_hat).abs()**2).sum() + beta*kl
     return loss
 
 #%%

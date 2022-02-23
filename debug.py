@@ -23,7 +23,7 @@ def loss_vae(x, x_hat, z, mu, logvar, beta=1):
         _type_: _description_
     """
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    loss = ((x-x_hat).abs()**2).sum() - beta*kl
+    loss = ((x-x_hat).abs()**2).sum() + beta*kl
     return loss
 
 #%%
@@ -71,6 +71,7 @@ for epoch in range(opts['n_epochs']):
         loss = loss_vae(x, x_hat, z, mu, logvar)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
+        rec.append(loss.detach().cpu().item())
         optimizer.step()
         torch.cuda.empty_cache()
         if loss.isnan() : print(nan)
