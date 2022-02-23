@@ -1,4 +1,5 @@
 #%%
+from cmath import rect
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -80,6 +81,11 @@ for epoch in range(opts['n_epochs']):
     if epoch%50 == 0:
         plt.figure()
         plt.plot(loss_tr, '-or')
+        plt.title(f'Loss fuction at epoch{epoch}')
+        plt.show()
+
+        plt.figure()
+        plt.plot(rec, '-ob')
         plt.title(f'Loss fuction at epoch{epoch}')
         plt.show()
 

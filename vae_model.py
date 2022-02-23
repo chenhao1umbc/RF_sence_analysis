@@ -88,8 +88,8 @@ class VAE2(nn.Module):
 
         self.K = K
         self.dz = 32
-        chans = (700, 600, 500, 400, 300)
-        # chans = (2560, 2048, 1536, 1024, 512)
+        # chans = (700, 600, 500, 400, 300)
+        chans = (2560, 2048, 1536, 1024, 512)
         self.encoder = nn.Sequential(
             LinearBlock(dimx, chans[0]),
             LinearBlock(chans[0],chans[1]),
