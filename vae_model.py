@@ -91,20 +91,20 @@ class VAE2(nn.Module):
         chans = (700, 600, 500, 400, 300)
         # chans = (2560, 2048, 1536, 1024, 512)
         self.encoder = nn.Sequential(
-            LinearBlock(self.dimx, chans[0]),
+            LinearBlock(dimx, chans[0]),
             LinearBlock(chans[0],chans[1]),
             LinearBlock(chans[1],chans[2]),
             LinearBlock(chans[2],chans[3]),
             LinearBlock(chans[3],chans[4]),
-            nn.Linear(512, 2*self.dz*K)
+            nn.Linear(chans[4], 2*self.dz*K)
             )
         self.decoder = nn.Sequential(
-            LinearBlock(self.dimz, chans[4]),
+            LinearBlock(self.dz, chans[4]),
             LinearBlock(chans[4],chans[3]),
             LinearBlock(chans[3],chans[2]),
             LinearBlock(chans[2],chans[1]),
             LinearBlock(chans[1],chans[0]),
-            LinearBlock(chans[0],self.dimx,activation=False),
+            LinearBlock(chans[0],dimx,activation=False),
             )
 
     def reparameterize(self, mu, logvar):
