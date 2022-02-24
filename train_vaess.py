@@ -70,10 +70,5 @@ for epoch in range(opts['n_epochs']):
         plt.title(f'Last 50 of loss at epoch{epoch}')
         plt.show()
 
-        plt.figure()
-        plt.imshow(x_hat.detach().cpu().abs().reshape(-1,100,100)[0])
-        plt.title('first sample of channel 1')
-        plt.show()
-
 print('done')
 # %%
