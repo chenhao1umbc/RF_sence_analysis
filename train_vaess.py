@@ -7,25 +7,7 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-def loss_vae(x, x_hat, mu, logvar, beta=1):
-    """This is a regular beta-vae loss
-
-    Args:
-        x (input data): [I, ?]
-        x_hat (reconstructed data): shape of [I, ?]
-        mu (mean): shape of [I]
-        logvar (log of variance): shape of [I]
-        beta (float, optional): _description_. Defaults to 0.5.
-
-    Returns:
-        _type_: _description_
-    """
-    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    loss = ((x-x_hat).abs()**2).sum() + beta*kl
-    return loss
-
-#%%
-from vae_model import VAE3 as VAE
+from vae_model import NN
 rid = 0 # running id
 fig_loc = '/home/chenhao1/Hpython/data/nem_ss/figures/'
 mod_loc = '/home/chenhao1/Hpython/data/nem_ss/models/'
@@ -47,27 +29,30 @@ opts['n_epochs'] = 500
 
 d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
-xtr = xtr.abs().to(torch.float)
+xtr = xtr.to(torch.cfloat)
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
+def loss_fun(x, vhat, Hhat, Rb, mu, logvar, beta=1):
+    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    ll, _, _ = log_likelihood(x.permute(0,2,3,1), \
+        vhat.to(torch.cfloat), Hhat, Rb.to(torch.cfloat))
+    return -ll+ beta*kl
+
 loss_iter, loss_tr = [], []
-model = VAE(3,3,100).cuda()
+model = NN(3,3,100).cuda()
 optimizer = torch.optim.Adam(model.parameters(),
                 lr= opts['lr'],
                 betas=(0.9, 0.999), 
                 eps=1e-8,
                 weight_decay=0)
-"initialize"
-Hhat = torch.randn(M, J).to(torch.cfloat).cuda()
-Rbtr = torch.ones(I, M).diag_embed().to(torch.cfloat)*100
 
 for epoch in range(opts['n_epochs']):    
     for i, (x,) in enumerate(tr): 
         x = x.cuda()
         optimizer.zero_grad()         
-        x_hat, z, mu, logvar, s = model(x)
-        loss = loss_vae(x, x_hat, mu, logvar)
+        vhat, Hhat, Rb, mu, logvar= model(x)
+        loss = loss_fun(x, vhat, Hhat, Rb, mu, logvar)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
         optimizer.step()

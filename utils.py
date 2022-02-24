@@ -49,7 +49,8 @@ def loss_func(vhat, Rsshatnf, lamb=0):
     return loss.sum()
 
 def log_lh(x, vhat, Hhat, Rb):
-    """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
+    """ only works for real number, if using autograd
+    Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
         vhat shape of [I, N, F, J]
         Rb shape of [I, M, M]
         x shape of [I, N, F, M]
@@ -57,14 +58,8 @@ def log_lh(x, vhat, Hhat, Rb):
     Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
     Rxperm = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb 
     Rx = Rxperm.permute(2,0,1,3,4) # shape of [I, N, F, M, M]
-    try:
-        l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
-        return l.sum().real, Rs, Rxperm
-    except:
-        eps = torch.ones(Rx.shape[-1], device=Rx.device).diag_embed()*1e-10
-        Rx = Rx + eps
-        l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
-        return l.sum().real, Rs, Rxperm+eps   
+    l = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
+    return l.sum().real, Rs, Rxperm 
 
 def log_likelihood(x, vhat, Hhat, Rb, lamb=0):
     """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
@@ -366,6 +361,25 @@ def metrics(s, s_hat, noise):
     sar = ((s_target+e_interf+e_noise).norm()/e_artif.norm()).log10()*20
     
     return sdr, sir, snr, sar
+
+
+def loss_vae(x, x_hat, mu, logvar, beta=1):
+    """This is a regular beta-vae loss
+
+    Args:
+        x (input data): [I, ?]
+        x_hat (reconstructed data): shape of [I, ?]
+        mu (mean): shape of [I]
+        logvar (log of variance): shape of [I]
+        beta (float, optional): _description_. Defaults to 0.5.
+
+    Returns:
+        _type_: _description_
+    """
+    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    loss = ((x-x_hat).abs()**2).sum() + beta*kl
+    return loss
+
 #%%
 if __name__ == '__main__':
     a, b = torch.rand(3,1).double(), torch.rand(3,1).double()
