@@ -35,7 +35,7 @@ tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
 def loss_fun(x, vhat, Hhat, Rb, mu, logvar, beta=1):
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    ll, _, _ = log_likelihood(x.permute(0,2,3,1), \
+    ll, _, _ = log_lh(x.permute(0,2,3,1), \
         vhat.to(torch.cfloat), Hhat, Rb.to(torch.cfloat))
     return -ll+ beta*kl
 

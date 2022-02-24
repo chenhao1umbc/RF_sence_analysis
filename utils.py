@@ -49,7 +49,7 @@ def loss_func(vhat, Rsshatnf, lamb=0):
     return loss.sum()
 
 def log_lh(x, vhat, Hhat, Rb):
-    """ only works for real number, if using autograd
+    """ for complex auto grad, it works fro pytorch 1.9 or newer.
     Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
         vhat shape of [I, N, F, J]
         Rb shape of [I, M, M]
