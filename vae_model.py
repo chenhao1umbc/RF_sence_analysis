@@ -140,8 +140,8 @@ class VAE3(nn.Module):
         self.fc1 = nn.Linear(25*25*K, 2*self.dz*K)
         self.fc2 = nn.Linear(self.dz*K, 25*25*K)
         self.decoder = nn.Sequential(
-            Down(in_channels=self.dz, out_channels=64),
-            Down(in_channels=64, out_channels=M*K),
+            DoubleConv(in_channels=self.dz+2, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=M),
             ) 
 
         self.im_size = im_size
@@ -170,20 +170,18 @@ class VAE3(nn.Module):
         "Decoder"
         batch_size = z.size(0)
         rz = z.reshape(-1,self.K, self.dz)
+        ss_all = []
         for i in range(self.K):
-            # View z as 4D tensor to be tiled across new H and W dimensions
-            # Shape: NxDx1x1
-            zr = rz[:,i].view(rz[:,i].shape + (1, 1))
-
+            # View z as 4D tensor to be tiled across new N and F dimensions            
+            zr = rz[:,i].view(rz[:,i].shape + (1, 1))# Shape: IxDxNx
             # Tile across to match image size
-            # Shape: NxDx64x64
-            zr = zr.expand(-1, -1, self.im_size, self.im_size)
+            zr = zr.expand(-1, -1, self.im_size, self.im_size) # Shape: IxDx64x64
 
             # Expand grids to batches and concatenate on the channel dimension
-            # Shape: Nx(dz*K+2)x64x64
             zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
-                        self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1)
+                        self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1) # Shape: Ix(dz*K+2)xNxF
             ss = self.decoder(zbd)
-        x_hat = ss.reshape(batch_size, self.M, self.K, self.im_size, self.im_size).sum(2)
-
-        return x_hat, z, mu, logvar
+            ss_all.append(ss)
+        s = torch.stack(ss_all, 2) # shape of [I, M, K, N, F]
+        x_hat = s.sum(2)
+        return x_hat, z, mu, logvar, s
