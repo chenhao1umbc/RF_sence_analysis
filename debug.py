@@ -8,16 +8,6 @@ print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
 from vae_model import NN
-rid = 0 # running id
-fig_loc = '/home/chenhao1/Hpython/data/nem_ss/figures/'
-mod_loc = '/home/chenhao1/Hpython/data/nem_ss/models/'
-if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
-    print('made a new folder')
-    os.mkdir(fig_loc + f'rid{rid}/')
-    os.mkdir(mod_loc + f'rid{rid}/')
-fig_loc = fig_loc + f'rid{rid}/'
-mod_loc = mod_loc + f'rid{rid}/'
-
 I = 3000 # how many samples
 M, N, F, J = 3, 100, 100, 3
 NF = N*F
@@ -27,7 +17,7 @@ opts['batch_size'] = 64
 opts['lr'] = 1e-3
 opts['n_epochs'] = 500
 
-d = torch.load('/home/chenhao1/Hpython/data/nem_ss/tr3kM3FT100.pt')
+d = torch.load('../data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
 xtr = xtr.to(torch.cfloat)
 data = Data.TensorDataset(xtr)
@@ -70,12 +60,12 @@ for epoch in range(opts['n_epochs']):
         plt.figure()
         plt.plot(loss_tr, '-or')
         plt.title(f'Loss fuction at epoch{epoch}')
-        plt.savefig(fig_loc + f'id{rid}_LossFunAll_epoch{epoch}')
+        plt.savefig(f'../fig/LossFunAll_epoch{epoch}')
 
         plt.figure()
         plt.plot(loss_tr[-50:], '-or')
         plt.title(f'Last 50 of loss at epoch{epoch}')
-        plt.savefig(fig_loc + f'id{rid}_last50_epoch{epoch}')
+        plt.savefig(f'../fig/last50_epoch{epoch}')
 
 print('done')
 # %%
