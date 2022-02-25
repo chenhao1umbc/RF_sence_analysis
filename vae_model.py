@@ -263,9 +263,9 @@ class NN(nn.Module):
         "Decoder3 get sig_b"
         sig_b = self.fc_b(rz[:, -1]).exp()
 
-        vhat = torch.stack(v_all, 4).squeeze() # shape:[I, N, F, K]
-        Hhat = torch.stack(h_all, 2) # shape:[I, M, K]
+        vhat = torch.stack(v_all, 4).squeeze() # shape:[I, N, F, K], float32
+        Hhat = torch.stack(h_all, 2) # shape:[I, M, K], cfloat
         Rb = sig_b[:,:,None]**2 * torch.ones(batch_size, \
-            self.M, device=sig_b.device).diag_embed() # shape:[I, M, M]
+            self.M, device=sig_b.device).diag_embed() # shape:[I, M, M], float32
 
         return vhat, Hhat, Rb, mu, logvar

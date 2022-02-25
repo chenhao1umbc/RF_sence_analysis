@@ -320,7 +320,6 @@ def val_run(data, ginit, model, lb, MJbs=(3,3,64), seed=1):
         print(f'val batch {i} is done')
     return sum(lv)/len(lv)
 
-
 def metrics(s, s_hat, noise):
     """This funciton calculates sdr, sir, snr, sar definded in the paper
     Performance Measurement in Blind Audio Source Separation
@@ -362,7 +361,6 @@ def metrics(s, s_hat, noise):
     
     return sdr, sir, snr, sar
 
-
 def loss_vae(x, x_hat, mu, logvar, beta=1):
     """This is a regular beta-vae loss
 
@@ -379,6 +377,36 @@ def loss_vae(x, x_hat, mu, logvar, beta=1):
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     loss = ((x-x_hat).abs()**2).sum() + beta*kl
     return loss
+
+def h_corr(h, hh):
+    "hh and h are in the shape of [M, J], dtype cfloat"
+    J = h.shape[-1]
+    r = [] 
+    permutes = list(itertools.permutations(list(range(J))))
+    for p in permutes:
+        temp = hh[:,torch.tensor(p)]
+        s = 0
+        for j in range(J):
+            dino = h[:,j].norm() * temp[:, j].norm()
+            nume = (temp[:, j].conj() * h[:, j]).sum().abs()
+            s = s + nume/dino
+        r.append(s/J)
+    r = sorted(r, reverse=True)
+    return r[0].item()
+
+def s_corr(vh, v):
+    "vh and v are the real value with shape of [N,F,J], v only contains non-negative values"
+    J = v.shape[-1]
+    r = [] 
+    permutes = list(itertools.permutations(list(range(J))))
+    for p in permutes:
+        temp = vh[..., torch.tensor(p)]
+        s = 0
+        for j in range(J):
+            s = s + abs(stats.pearsonr(v[...,j].flatten(), temp[...,j].flatten())[0])
+        r.append(s)
+    r = sorted(r, reverse=True)
+    return r[0]/J
 
 #%%
 if __name__ == '__main__':
