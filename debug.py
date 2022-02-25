@@ -63,18 +63,19 @@ for epoch in range(opts['n_epochs']):
         optimizer.step()
         torch.cuda.empty_cache()
         loss_iter.append(loss.detach().cpu().item())
+        print(f'epoch{epoch} - iter{i} finished')
 
     loss_tr.append(loss.detach().cpu().item())
     if epoch%3 == 0:
         plt.figure()
         plt.plot(loss_tr, '-or')
         plt.title(f'Loss fuction at epoch{epoch}')
-        plt.show()
+        plt.savefig(fig_loc + f'id{rid}_LossFunAll_epoch{epoch}')
 
         plt.figure()
         plt.plot(loss_tr[-50:], '-or')
         plt.title(f'Last 50 of loss at epoch{epoch}')
-        plt.show()
+        plt.savefig(fig_loc + f'id{rid}_last50_epoch{epoch}')
 
 print('done')
 # %%
