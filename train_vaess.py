@@ -58,7 +58,6 @@ optimizer = torch.optim.Adam(model.parameters(),
                 weight_decay=0)
 
 for epoch in range(opts['n_epochs']):
-    print('1 epoch starting time ', datetime.now())    
     for i, (x,) in enumerate(tr): 
         h = Htr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
         rs = Rstr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
@@ -77,7 +76,7 @@ for epoch in range(opts['n_epochs']):
             Rstr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Rs.cpu()
             Htr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Hhat.cpu()
             Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Rb.cpu()
-    print('1 epoch end time ', datetime.now())
+            
     loss_tr.append(loss.detach().cpu().item())
     if epoch%10 == 0:
         plt.figure()
