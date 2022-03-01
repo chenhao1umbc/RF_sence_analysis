@@ -281,15 +281,19 @@ class NN0(nn.Module):
 
         # Estimate V
         self.dz = 32
-        self.K, self.M = K, M//2
+        self.K, self.M = K, M
         self.encoder = nn.Sequential(
-            Down(in_channels=M, out_channels=64),
-            Down(in_channels=64, out_channels=K+1),
+            Down(in_channels=1, out_channels=32),
+            DoubleConv(in_channels=32, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=1),
             )
-        self.fc1 = nn.Linear(25*25*(K+1), 2*self.dz*(K+1))
+        self.fc1 = nn.Linear(25*25, 2*self.dz)
         self.decoder = nn.Sequential(
-            DoubleConv(in_channels=self.dz+2, out_channels=64),
-            DoubleConv(in_channels=64, out_channels=1),
+            DoubleConv(in_channels=self.dz+2, out_channels=32),
+            DoubleConv(in_channels=32, out_channels=32),
+            DoubleConv(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=1),
             ) 
 
         self.im_size = im_size
@@ -309,7 +313,7 @@ class NN0(nn.Module):
         
         # Estimate Rb
         self.fc_b = nn.Sequential(
-            LinearBlock(self.dz, 64),
+            LinearBlock(self.dz*self.K, 64),
             nn.Linear(64, 1),
             )   
     
@@ -318,23 +322,26 @@ class NN0(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps*std
 
-    def forward(self, x):
-        "Encoder"
-        x = self.encoder(torch.cat((x.real, x.imag), dim=1))
-        batch_size = x.shape[0]
-        "Get latent variable"
-        zz = self.fc1(x.reshape(batch_size,-1))
-        mu = zz[:,::2]
-        logvar = zz[:,1::2]
-        z = self.reparameterize(mu, logvar)
-
-        "Decoders"
-        rz = z.reshape(batch_size, self.K+1, self.dz)
-        v_all, h_all = [], []
+    def forward(self, x, h_old, Rs_old, Rb_old):
+        "get estimated sources: s"
+        Rx = h_old@Rs_old.permute(1,2,0,3,4)@h_old.transpose(-1,-2).conj()+Rb_old # [N,F,I,M,M]
+        W = Rs_old.permute(1,2,0,3,4)@h_old.transpose(-1,-2).conj()@Rx.inverse() # [N,F,I,J,M]
+        s = (W.permute(2,0,1,3,4) @ x.permute(0,2,3,1)[...,None]).squeeze().abs()
+        
+        zk ,v_all, h_all = [], [], []
         for i in range(self.K):
+            "Encoder"
+            ss = self.encoder(s[:,None, :,:,i])
+            batch_size = ss.shape[0]
+            "Get latent variable"
+            zz = self.fc1(ss.reshape(batch_size,-1))
+            mu = zz[:,::2]
+            logvar = zz[:,1::2]
+            zk.append(self.reparameterize(mu, logvar))
+
             "Decoder1 get V"
             # View z as 4D tensor to be tiled across new N and F dimensions            
-            zr = rz[:,i].view(rz[:,i].shape + (1, 1))  #Shape: IxDxNxF
+            zr = zk[i].view(zk[i].shape + (1, 1))  #Shape: IxDxNxF
             # Tile across to match image size
             zr = zr.expand(-1, -1, self.im_size, self.im_size)  #Shape: IxDx64x64
             # Expand grids to batches and concatenate on the channel dimension
@@ -343,14 +350,14 @@ class NN0(nn.Module):
             v = self.decoder(zbd).exp()
             v_all.append(threshold(v, ceiling=1e4)) # 1e-3 to 1e4
             "Decoder2 get H"
-            ang = self.fc_h(rz[:, i])
+            ang = self.fc_h(zk[i])
             h_all.append((ang*torch.pi*1j*torch.arange(self.M, device=ang.device)).exp())
         "Decoder3 get sig_b"
-        sig_b = self.fc_b(rz[:, -1]).exp()
+        sig_b = self.fc_b(torch.cat(zk, dim=1)).exp()
 
         vhat = torch.stack(v_all, 4).squeeze() # shape:[I, N, F, K], float32
         Hhat = torch.stack(h_all, 2) # shape:[I, M, K], cfloat
         Rb = sig_b[:,:,None]**2 * torch.ones(batch_size, \
             self.M, device=sig_b.device).diag_embed() # shape:[I, M, M], float32
 
-        return vhat, Hhat, Rb, mu, logvar
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar
