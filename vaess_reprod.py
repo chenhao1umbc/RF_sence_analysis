@@ -10,6 +10,17 @@ torch.manual_seed(1)
 import pandas as pd
 from vae_model import LinearBlock
 
+
+rid = "_vae_repr0"# running id
+fig_loc = '/home/chenhao1/Hpython/data/nem_ss/figures/'
+mod_loc = '/home/chenhao1/Hpython/data/nem_ss/models/'
+if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
+    print('made a new folder')
+    os.mkdir(fig_loc + f'rid{rid}/')
+    os.mkdir(mod_loc + f'rid{rid}/')
+fig_loc = fig_loc + f'rid{rid}/'
+mod_loc = mod_loc + f'rid{rid}/'
+
 class VAE2(nn.Module):
     """This is MLP version  -- ref VAESS
     Input shape [I,MNF], e.g.[32, 3*100*100]"""
@@ -105,31 +116,36 @@ for epoch in range(opts['n_epochs']):
         plt.figure()
         plt.plot(loss_tr, '-or')
         plt.title(f'Loss fuction at epoch{epoch}')
+        plt.savefig(fig_loc + f'id{rid}Loss fuction at epoch{epoch}')
         plt.show()
 
         plt.figure()
         plt.plot(rec, '-ob')
-        plt.title(f'Loss fuction at epoch{epoch}')
+        plt.savefig(fig_loc + f'id{rid}All loss at epoch{epoch}')
         plt.show()
 
         plt.figure()
         plt.imshow(x[0].cpu().reshape(28,28))
         plt.title('first sample GT')
+        plt.savefig(fig_loc + f'id{rid}first sample GT at epoch{epoch}')
         plt.show()
 
         plt.figure()
         plt.imshow(x_hat[0].detach().cpu().reshape(28,28))
         plt.title('first sample reconstruction')
+        plt.savefig(fig_loc + f'id{rid}first sample reconstruction at epoch{epoch}')
         plt.show()
 
         plt.figure()
         plt.imshow(s[0,0].detach().cpu().reshape(28,28))
         plt.title('first sample of estimated channel 1')
+        plt.savefig(fig_loc + f'id{rid}first sample of estimated channel 1 at epoch{epoch}')
         plt.show()
 
         plt.figure()
         plt.imshow(s[0,1].detach().cpu().reshape(28,28))
         plt.title('first sample of estimated channel 2')
+        plt.savefig(fig_loc + f'id{rid}first sample of estimated channel 2 at epoch{epoch}')
         plt.show()
 
 print('Done at ', datetime.now())
