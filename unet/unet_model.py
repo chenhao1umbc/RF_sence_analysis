@@ -1937,7 +1937,43 @@ class SBD4(nn.Module):
 
         return out
 
+class SBD5(nn.Module):
+    """based on sbd2, but more layers
+    Input shape [I, d_gamma], e.g.[32,64]"""
+    def __init__(self, dz=32, im_size=100, max_ch=32):
+        super().__init__()
+        self.decoder = nn.Sequential(
+            DoubleConv(in_channels=dz+2, out_channels=max_ch),
+            DoubleConv(in_channels=max_ch, out_channels=max_ch//2),
+            DoubleConv(in_channels=max_ch//2, out_channels=max_ch//2),
+            DoubleConv(in_channels=max_ch//2, out_channels=max_ch//4),
+            DoubleConv(in_channels=max_ch//4, out_channels=max_ch//4),
+            OutConv(max_ch//4, 1),
+            nn.Sigmoid()
+            ) 
 
+        self.im_size = im_size
+        x = torch.linspace(-1, 1, im_size)
+        y = torch.linspace(-1, 1, im_size)
+        x_grid, y_grid = torch.meshgrid(x, y)
+        # Add as constant, with extra dims for N and C
+        self.register_buffer('x_grid', x_grid.view((1, 1) + x_grid.shape))
+        self.register_buffer('y_grid', y_grid.view((1, 1) + y_grid.shape))
+
+    def forward(self, gamma):
+        batch_size = gamma.size(0)
+        # View z as 4D tensor to be tiled across new H and W dimensions
+        # Shape: NxDx1x1
+        x = gamma.view(gamma.shape + (1, 1))
+        x = x.expand(-1, -1, self.im_size, self.im_size)
+        # Expand grids to batches and concatenate on the channel dimension
+        # Shape: Nx(D+2)xim_sizexim_size
+        zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
+                       self.y_grid.expand(batch_size, -1, -1, -1), x), dim=1)
+        x_hat = self.decoder(zbd)
+        out = x_hat/x_hat.detach().amax(keepdim=True, dim=(-1,-2))
+
+        return out
 
 # Full UNet shape structure
 class UNet8to100(nn.Module):
