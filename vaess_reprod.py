@@ -61,7 +61,7 @@ def pre_mix(lb, d):
     ind1 = torch.randperm(d.shape[0])
     ind2 = torch.randperm(d.shape[0])
     dd = d[ind1] + d[ind2]
-    lbs = [lb[ind1],lb[ind2]]
+    lbs = torch.stack([lb[ind1],lb[ind2]], dim=1)
     return lbs, dd
 
 #%%
@@ -74,9 +74,9 @@ K = 2
 
 dd = pd.read_csv("../data/mnist_train.csv", delimiter=",", header=None).values
 lb, d = torch.from_numpy(dd[:,0]), torch.from_numpy(dd[:,1:])
-lb, d = pre_mix(lb, d)
+lbs, d = pre_mix(lb, d)
 xtr = (d/d.abs().amax(dim=1, keepdim=True).to(torch.float32)).cuda() # [sample, D)
-data = Data.TensorDataset(xtr)
+data = Data.TensorDataset(xtr, lbs)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
 loss_iter, loss_tr = [], []
@@ -88,8 +88,7 @@ optimizer = torch.optim.Adam(model.parameters(),
                 weight_decay=0)
 rec = []
 for epoch in range(opts['n_epochs']):
-    print('Start epoch at ', datetime.now())   
-    for i, (x,) in enumerate(tr): 
+    for i, (x, y) in enumerate(tr): 
         optimizer.zero_grad()         
         x_hat, z, mu, logvar, s = model(x)
         loss = loss_vae(x, x_hat, mu, logvar, 0.5)
@@ -99,9 +98,10 @@ for epoch in range(opts['n_epochs']):
         optimizer.step()
         torch.cuda.empty_cache()
         if loss.isnan() : print(nan)
-    print('Done one epoch at ', datetime.now())
+
     loss_tr.append(loss.detach().cpu().item())
     if epoch%50 == 0:
+        print('labels', y[0])
         plt.figure()
         plt.plot(loss_tr, '-or')
         plt.title(f'Loss fuction at epoch{epoch}')
@@ -113,17 +113,22 @@ for epoch in range(opts['n_epochs']):
         plt.show()
 
         plt.figure()
-        plt.imshow(x_hat[0].detach().cpu().abs().reshape(28,28))
+        plt.imshow(x[0].cpu().reshape(28,28))
+        plt.title('first sample GT')
+        plt.show()
+
+        plt.figure()
+        plt.imshow(x_hat[0].detach().cpu().reshape(28,28))
         plt.title('first sample reconstruction')
         plt.show()
 
         plt.figure()
-        plt.imshow(s[0,0].detach().cpu().abs().reshape(28,28))
+        plt.imshow(s[0,0].detach().cpu().reshape(28,28))
         plt.title('first sample of estimated channel 1')
         plt.show()
 
         plt.figure()
-        plt.imshow(s[0,1].detach().cpu().abs().reshape(28,28))
+        plt.imshow(s[0,1].detach().cpu().reshape(28,28))
         plt.title('first sample of estimated channel 2')
         plt.show()
 
