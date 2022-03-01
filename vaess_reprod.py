@@ -8,17 +8,16 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 import pandas as pd
-
 from vae_model import LinearBlock
 
 class VAE2(nn.Module):
     """This is MLP version  -- ref VAESS
     Input shape [I,MNF], e.g.[32, 3*100*100]"""
-    def __init__(self, dimx=30000, K=3):
+    def __init__(self, dimx=784, K=2):
         super(VAE2, self).__init__()
 
         self.K = K
-        self.dz = 32
+        self.dz = 20
         chans = (700, 600, 500, 400, 300)
         # chans = (2560, 2048, 1536, 1024, 512)
         self.encoder = nn.Sequential(
@@ -56,9 +55,16 @@ class VAE2(nn.Module):
 
         return x_hat, z, mu, logvar, s
 
-I = 3000 # how many samples
-M, N, F, J = 3, 100, 100, 3
-NF = N*F
+
+def pre_mix(lb, d):
+    d = d.to(torch.float)
+    ind1 = torch.randperm(d.shape[0])
+    ind2 = torch.randperm(d.shape[0])
+    dd = d[ind1] + d[ind2]
+    lbs = [lb[ind1],lb[ind2]]
+    return lbs, dd
+
+#%%
 eps = 5e-4
 opts = {}
 opts['batch_size'] = 128
@@ -66,34 +72,34 @@ opts['lr'] = 1e-4
 opts['n_epochs'] = 5000
 K = 2
 
-#%%
 dd = pd.read_csv("../data/mnist_train.csv", delimiter=",", header=None).values
 lb, d = torch.from_numpy(dd[:,0]), torch.from_numpy(dd[:,1:])
+lb, d = pre_mix(lb, d)
 xtr = (d/d.abs().amax(dim=1, keepdim=True).to(torch.float32)).cuda() # [sample, D)
 data = Data.TensorDataset(xtr)
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
 
 loss_iter, loss_tr = [], []
-model = VAE2(784, 1).cuda()
+model = VAE2(784, K).cuda()
 optimizer = torch.optim.Adam(model.parameters(),
                 lr= opts['lr'],
                 betas=(0.9, 0.999), 
                 eps=1e-8,
                 weight_decay=0)
 rec = []
-for epoch in range(opts['n_epochs']):    
+for epoch in range(opts['n_epochs']):
+    print('Start epoch at ', datetime.now())   
     for i, (x,) in enumerate(tr): 
-        # x = x.cuda()
         optimizer.zero_grad()         
         x_hat, z, mu, logvar, s = model(x)
-        loss = loss_vae(x, x_hat, mu, logvar)
+        loss = loss_vae(x, x_hat, mu, logvar, 0.5)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
         rec.append(loss.detach().cpu().item())
         optimizer.step()
         torch.cuda.empty_cache()
         if loss.isnan() : print(nan)
-
+    print('Done one epoch at ', datetime.now())
     loss_tr.append(loss.detach().cpu().item())
     if epoch%50 == 0:
         plt.figure()
@@ -107,9 +113,19 @@ for epoch in range(opts['n_epochs']):
         plt.show()
 
         plt.figure()
-        plt.imshow(x_hat.detach().cpu().abs().reshape(-1,28,28)[0])
-        plt.title('first sample of channel 1')
+        plt.imshow(x_hat[0].detach().cpu().abs().reshape(28,28))
+        plt.title('first sample reconstruction')
         plt.show()
 
-print('done')
+        plt.figure()
+        plt.imshow(s[0,0].detach().cpu().abs().reshape(28,28))
+        plt.title('first sample of estimated channel 1')
+        plt.show()
+
+        plt.figure()
+        plt.imshow(s[0,1].detach().cpu().abs().reshape(28,28))
+        plt.title('first sample of estimated channel 2')
+        plt.show()
+
+print('Done at ', datetime.now())
 # %%
