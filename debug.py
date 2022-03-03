@@ -81,7 +81,7 @@ for epoch in range(opts['n_epochs']):
         rs0 = Rs[0].detach().to(torch.cfloat) 
         Rx = hh @ rs0 @ hh.conj().t() + Rb.detach().to(torch.cfloat)[0]
         shat = (rs0 @ hh.conj().t() @ Rx.inverse()@x.permute(0,2,3,1)[0,:,:,:, None]).cpu() 
-        for ii in range(J):
+        for ii in range(K):
             plt.figure()
             plt.imshow(shat[:,:,ii].abs())
             plt.title(f'estimated sources-{ii} at {epoch}')
