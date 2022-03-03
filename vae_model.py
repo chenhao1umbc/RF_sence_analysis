@@ -377,10 +377,10 @@ class NN1(nn.Module):
         self.encoder = nn.Sequential(
             Down(in_channels=M*2, out_channels=64),
             DoubleConv(in_channels=64, out_channels=32),
-            Down(in_channels=64, out_channels=16),
-            DoubleConv(in_channels=16, out_channels=1),
+            Down(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=K),
             )
-        self.fc1 = nn.Linear(25*25*(K+1), 2*self.dz*(K+1))
+        self.fc1 = nn.Linear(25*25*K, 2*self.dz*K)
         self.decoder = nn.Sequential(
             DoubleConv(in_channels=self.dz+2, out_channels=64),
             DoubleConv(in_channels=64, out_channels=32),
@@ -405,7 +405,7 @@ class NN1(nn.Module):
         
         # Estimate Rb
         self.fc_b = nn.Sequential(
-            LinearBlock(self.dz, 64),
+            LinearBlock(self.dz*K, 64),
             nn.Linear(64, 1),
             )   
     
@@ -416,7 +416,7 @@ class NN1(nn.Module):
 
     def forward(self, x):
         "Encoder"
-        x = self.encoder(x.abs())
+        x = self.encoder(x)
         batch_size = x.shape[0]
         "Get latent variable"
         zz = self.fc1(x.reshape(batch_size,-1))
@@ -425,7 +425,7 @@ class NN1(nn.Module):
         z = self.reparameterize(mu, logvar)
 
         "Decoders"
-        rz = z.reshape(batch_size, self.K+1, self.dz)
+        rz = z.reshape(batch_size, self.K, self.dz)
         v_all, h_all = [], []
         for i in range(self.K):
             "Decoder1 get V"
@@ -444,9 +444,9 @@ class NN1(nn.Module):
         "Decoder3 get sig_b"
         sig_b = self.fc_b(rz[:, -1]).exp()
 
-        vhat = torch.stack(v_all, 4).squeeze() # shape:[I, N, F, K], float32
+        vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
         Hhat = torch.stack(h_all, 2) # shape:[I, M, K], cfloat
         Rb = sig_b[:,:,None]**2 * torch.ones(batch_size, \
-            self.M, device=sig_b.device).diag_embed() # shape:[I, M, M], float32
+            self.M, device=sig_b.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
 
-        return vhat, Hhat, Rb, mu, logvar
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar
