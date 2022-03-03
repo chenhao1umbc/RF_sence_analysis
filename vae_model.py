@@ -380,7 +380,7 @@ class NN1(nn.Module):
             Down(in_channels=64, out_channels=16),
             DoubleConv(in_channels=16, out_channels=1),
             )
-        self.fc1 = nn.Linear(25*25*(K+1), 2*self.dz*(K+1))
+        self.fc1 = nn.Linear(25*25*K, 2*self.dz*K)
         self.decoder = nn.Sequential(
             DoubleConv(in_channels=self.dz+2, out_channels=64),
             DoubleConv(in_channels=64, out_channels=32),
@@ -405,7 +405,7 @@ class NN1(nn.Module):
         
         # Estimate Rb
         self.fc_b = nn.Sequential(
-            LinearBlock(self.dz, 64),
+            LinearBlock(self.dz*self.K, 64),
             nn.Linear(64, 1),
             )   
     
@@ -425,7 +425,7 @@ class NN1(nn.Module):
         z = self.reparameterize(mu, logvar)
 
         "Decoders"
-        rz = z.reshape(batch_size, self.K+1, self.dz)
+        rz = z.reshape(batch_size, self.K, self.dz)
         v_all, h_all = [], []
         for i in range(self.K):
             "Decoder1 get V"
@@ -442,7 +442,7 @@ class NN1(nn.Module):
             ang = self.fc_h(rz[:, i])
             h_all.append((ang*torch.pi*1j*torch.arange(self.M, device=ang.device)).exp())
         "Decoder3 get sig_b"
-        sig_b = self.fc_b(rz[:, -1]).exp()
+        sig_b = self.fc_b(z).exp()
 
         vhat = torch.stack(v_all, 4).squeeze() # shape:[I, N, F, K], float32
         Hhat = torch.stack(h_all, 2) # shape:[I, M, K], cfloat
