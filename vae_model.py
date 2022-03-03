@@ -405,7 +405,7 @@ class NN1(nn.Module):
         
         # Estimate Rb
         self.fc_b = nn.Sequential(
-            LinearBlock(self.dz*K, 64),
+            LinearBlock(self.dz*self.K, 64),
             nn.Linear(64, 1),
             )   
     
@@ -442,7 +442,7 @@ class NN1(nn.Module):
             ang = self.fc_h(rz[:, i])
             h_all.append((ang*torch.pi*1j*torch.arange(self.M, device=ang.device)).exp())
         "Decoder3 get sig_b"
-        sig_b = self.fc_b(rz[:, -1]).exp()
+        sig_b = self.fc_b(z).exp()
 
         vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
         Hhat = torch.stack(h_all, 2) # shape:[I, M, K], cfloat
