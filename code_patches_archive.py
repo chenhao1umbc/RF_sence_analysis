@@ -1013,7 +1013,7 @@ if True:
     plt.title('Correlation result for EM')
     plt.show()
 
-#%% Prepare real data
+#%% Prepare real data 3-classes mixture
     "raw data processing"
     FT = 128
     var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
@@ -1067,6 +1067,47 @@ if True:
     s3 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
     s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
     torch.save((x[3500:], s, h), f'test500M3FT{FT}_xsh.pt')
+
+#%% Prepare real data 2-classes mixture from 3(wifi, fhss, ble) 
+    "raw data processing"
+    FT = 100
+    var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
+    data = {}
+    for i in range(6):
+        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
+        dd = (np.sum((abs(temp['x'])**2), 1)**0.5).reshape(2000, 1)
+        # dd = np.abs(temp['x']).max(axis=1).reshape(2000, 1)
+        data[i] = temp['x'] / dd  # normalized very sample to 1
+
+    np.set_printoptions(linewidth=150)
+    "To generate 5000 mixture samples"
+    theta = np.array([15, 60, -45])*np.pi/180  #len=M, signal AOAs  
+    h = np.exp(-1j*np.pi*np.arange(0, 3)[:,None]@np.sin(theta)[None, :])  # shape of [M, J]
+
+    for c in [[0,2], [0,5], [2,5]]:
+        ds = []
+        for seed in [0,1]:
+            np.random.seed(seed)
+            np.random.shuffle(data[c[0]])
+            np.random.shuffle(data[c[1]])
+            dd = 0
+            for cc in c:
+                if cc == 0:
+                    ind = 0
+                elif cc == 2:
+                    ind = 1
+                else:
+                    ind = 2
+                dd = dd + h[:,ind][:,None]@data[cc][:,None,:]
+            ds.append(dd)
+
+        data_pool = np.concatenate(ds, axis=0)  #[I,M,time_len]
+        *_, Z = stft(data_pool, fs=4e7, nperseg=FT, boundary=None)
+        x = torch.tensor(np.roll(Z, FT//2, axis=2))  # roll nperseg//2
+        plt.figure()
+        plt.imshow(x[0,0].abs().log(), aspect='auto', interpolation='None')
+        plt.title('One example of 3-component mixture')
+        torch.save(x[:3000], f'tr3kM3J{c[0]}{c[1]}FT{FT}.pt')
 
 #%% Prepare real data 3classes with close angles
     from utils import *
