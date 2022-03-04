@@ -1,4 +1,4 @@
-#%% v10100
+#%% v10210
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -7,7 +7,7 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-from vae_model import NN1 as NN
+from vae_model import NN2 as NN
 def loss_fun(x, Rs, Hhat, Rb, mu, logvar, beta=0.5):
     x = x.permute(0,2,3,1)
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
@@ -18,7 +18,7 @@ def loss_fun(x, Rs, Hhat, Rb, mu, logvar, beta=0.5):
     #     vhat.to(torch.cfloat), Hhat, Rb.to(torch.cfloat))
     return -ll.sum().real + beta*kl
 
-rid = 'v10100' # running id
+rid = 'v10210' # running id
 fig_loc = '../data/nem_ss/figures/'
 mod_loc = '../data/nem_ss/models/'
 if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
@@ -35,16 +35,17 @@ eps = 5e-4
 opts = {}
 opts['batch_size'] = 64
 opts['lr'] = 1e-3
-opts['n_epochs'] = 500
+opts['n_epochs'] = 3000
 
 d = torch.load('../data/nem_ss/tr3kM3FT100.pt')
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
 xtr = xtr.to(torch.cfloat)
 data = Data.TensorDataset(xtr)
-tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
+tr = Data.DataLoader(data, batch_size=opts['batch_size'], shuffle=True, drop_last=True)
 
 # h = torch.load('../data/nem_ss/HCinit_hhat_M3_FT100.pt').to(torch.cdouble).cuda()
 _, _ , hgt = d = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
+Hgt = torch.tensor(hgt).to(torch.cfloat).cuda()
 
 loss_iter, loss_tr = [], []
 model = NN(M,K,N).cuda()
@@ -58,7 +59,7 @@ for epoch in range(opts['n_epochs']):
     for i, (x,) in enumerate(tr): 
         x = x.cuda()
         optimizer.zero_grad()         
-        Rs, Hhat, Rb, mu, logvar= model(torch.cat((x.real, x.imag), dim=1))
+        Rs, Hhat, Rb, mu, logvar= model(x, Hgt)
         loss = loss_fun(x, Rs, Hhat, Rb, mu, logvar)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
@@ -70,24 +71,24 @@ for epoch in range(opts['n_epochs']):
         plt.figure()
         plt.plot(loss_tr, '-or')
         plt.title(f'Loss fuction at epoch{epoch}')
-        plt.savefig(fig_loc + f'id{rid}_LossFunAll_epoch{epoch}')
+        plt.savefig(fig_loc + f'Epoch{epoch}_LossFunAll')
 
         plt.figure()
         plt.plot(loss_tr[-50:], '-or')
         plt.title(f'Last 50 of loss at epoch{epoch}')
-        plt.savefig(fig_loc + f'id{rid}_last50_epoch{epoch}')
+        plt.savefig(fig_loc + f'Epoch{epoch}_last50')
 
-        hh = Hhat[0].detach()
-        rs0 = Rs[0].detach().to(torch.cfloat) 
-        Rx = hh @ rs0 @ hh.conj().t() + Rb.detach().to(torch.cfloat)[0]
+        hh = Hhat[0]
+        rs0 = Rs[0].detach() 
+        Rx = hh @ rs0 @ hh.conj().t() + Rb.detach()[0]
         shat = (rs0 @ hh.conj().t() @ Rx.inverse()@x.permute(0,2,3,1)[0,:,:,:, None]).cpu() 
         for ii in range(K):
             plt.figure()
             plt.imshow(shat[:,:,ii].abs())
-            plt.title(f'estimated sources-{ii} at {epoch}')
-            plt.savefig(fig_loc + f'id{rid}_estimated sources-{ii} at {epoch}')
+            plt.title(f'Epoch{epoch}_estimated sources-{ii}')
+            plt.savefig(fig_loc + f'Epoch{epoch}_estimated sources-{ii}')
             plt.show()
-            plt.close()
+            plt.close('all')
         print(h_corr(hh.cpu(), torch.tensor(hgt)))
 
 print('done')
