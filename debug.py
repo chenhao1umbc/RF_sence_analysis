@@ -3,7 +3,6 @@ from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
 torch.set_printoptions(linewidth=160)
-from skimage.transform import resize
 
 d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M3FT100_xsh.pt')
 h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
@@ -104,21 +103,215 @@ model = f'/home/chenhao1/Hpython/data/nem_ss/models/rid{rid}/model_rid{rid}_41.p
 shv, g, Rb, loss = nem_func_less(awgn(x_all[ind], 30), J=3, seed=10, model=model, max_iter=301)
 shat, Hhat, vhat = shv
 
-c = torch.rand(100,100,3,3).to(torch.cfloat)
-for i in range(3):
-    c[:,:,i] = shat.squeeze()[...,i][..., None] @ Hhat.squeeze()[None, :, i]
-    print(c[:,:,i].norm())
-
-for i in range(3):
-    plt.figure()
-    plt.imshow(c[:,:,i].squeeze().abs()[...,i]*ratio[ind])
-    plt.title('plot of c from NEM')
-    plt.colorbar()
-
 for i in range(3):
     plt.figure()
     plt.imshow(shat.squeeze().abs()[...,i])
     plt.colorbar()
     plt.title('plot of s from NEM')
 
-print(h_corr(Hhat.squeeze(), h))
+print('h correlation value: ', h_corr(Hhat.squeeze(), h))
+
+#%%
+def get_metric(s, sh, noise):
+    """input signal and reconstructed signal and outpt the sdr. The permutation
+    is inplemented in this function, This funciton can only process 1 sample of J source
+
+    Args:
+        s (tenor): ground truth, shape of [J,N,F]
+        sh (tenor): estimation, shape of [J,N,F]
+        noise (tensor): noise estimation, shape of [M,N,F]
+    """
+    J, N, F = s.shape
+    NF = N*F
+    permutes = list(itertools.permutations(list(range(J))))
+    PsTimessj_hat = s.clone() # init. Ps times sj_hat
+    e_noise = s.clone() # init. e_noise 
+
+    SDR, SIR, SNR, SAR = ([] for i in range(4))
+    for p in permutes:
+        shat = sh[torch.tensor(p)]
+        "get s_target"
+        s_target = ((s*shat.conj()).sum(dim=(-1,-2), keepdim=True) *s)/(s.abs()**2).sum(dim=(-1,-2), keepdim=True)
+        
+        Rss = s.reshape(J, NF) @ s.reshape(J, NF).conj().t()# Rss is the Gram matrix of the sources [J,J]
+        for j in range(J):
+            "get e_interf"
+            temp = (shat[j] * s.conj()).sum(dim=(-1,-2)) #shape of [J]
+            c = Rss.inverse()@ temp[None,:].conj().t()
+            PsTimessj_hat[j] = (c.t().conj()@s.reshape(J, NF)).reshape(N,F)
+            "get e_noise"
+            inner = (shat[j] * noise.conj()).sum(dim=(-1,-2))
+            temp = inner[:,None,None]*noise / (noise.abs()**2).sum(dim=(-1,-2), keepdim=True)
+            e_noise[j] = temp.sum(0)
+        "get e_artif"
+        e_interf = PsTimessj_hat - s_target
+        e_artif = shat - e_noise -PsTimessj_hat
+
+        sdr = (s_target.norm(dim=(-1,-2))/(e_interf+e_noise+e_artif).norm(dim=(-1,-2))).log10()*20
+        sir = (s_target.norm(dim=(-1,-2))/e_interf.norm(dim=(-1,-2))).log10()*20
+        snr = ((s_target+e_interf).norm(dim=(-1,-2))/e_noise.norm(dim=(-1,-2))).log10()*20
+        sar = ((s_target+e_interf+e_noise).norm(dim=(-1,-2))/e_artif.norm(dim=(-1,-2))).log10()*20
+        SDR.append(sdr.mean())
+        SIR.append(sir.mean())
+        SNR.append(snr.mean())
+        SAR.append(sar.mean())
+    return max(SDR), max(SIR), max(SNR), max(SAR)
+
+noise = (x_all[ind] - (Hhat@shat).squeeze()).permute(2,0,1)
+rs0 = get_metric(s[ind], shat.squeeze().permute(2,0,1), noise)
+rs1 = get_metric(s_all[ind].permute(2,0,1), shat.squeeze().abs().permute(2,0,1), noise)
+print(rs0, rs1)
+print('s correlation value: ', s_corr(shat.squeeze().abs(), s_all[ind]))
+
+#%%
+class EM:
+    def calc_ll_cpx2(self, x, vhat, Rj, Rb):
+        """ Rj shape of [J, M, M]
+            vhat shape of [N, F, J]
+            Rb shape of [M, M]
+            x shape of [N, F, M]
+        """
+        _, M, M = Rj.shape
+        N, F, J = vhat.shape
+        Rcj = vhat.reshape(N*F, J) @ Rj.reshape(J, M*M)
+        Rcj = Rcj.reshape(N, F, M, M)
+        Rx = Rcj + Rb 
+        l = -(np.pi*Rx.det()).log() - (x[..., None, :].conj()@Rx.inverse()@x[..., None]).squeeze()
+        return l.sum()
+    
+    def rand_init(self, x, J=6, Hscale=1, Rbscale=100, seed=0):
+        N, F, M = x.shape
+        torch.torch.manual_seed(seed)
+        dtype = x.dtype
+
+        vhat = torch.randn(N, F, J).abs().to(dtype)
+        Hhat = torch.randn(M, J, dtype=dtype)*Hscale
+        Rb = torch.eye(M).to(dtype)*Rbscale
+        Rj = torch.zeros(J, M, M).to(dtype)
+        return vhat, Hhat, Rb, Rj
+    
+    def cluster_init(self, x, J=3, K=60, init=1, Rbscale=1e-3, showfig=False):
+        """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
+        Given : A set X of obejects{x1,...,xn}
+                A cluster distance function dist(c1, c2)
+        for i=1 to n
+            ci = {xi}
+        end for
+        C = {c1, ..., cn}
+        I = n+1
+        While I>1 do
+            (cmin1, cmin2) = minimum dist(ci, cj) for all ci, cj in C
+            remove cmin1 and cmin2 from C
+            add {cmin1, cmin2} to C
+            I = I - 1
+        end while
+
+        However, this naive algorithm does not fit large samples. 
+        Here we use scipy function for the linkage.
+        J is how many clusters
+        """   
+        dtype = x.dtype
+        N, F, M = x.shape
+
+        "get data and clusters ready"
+        x_norm = ((x[:,:,None,:]@x[..., None].conj())**0.5)[:,:,0]
+        if init==1: x_ = x/x_norm * (-1j*x[...,0:1].angle()).exp() # shape of [N, F, M] x_bar
+        else: x_ = x * (-1j*x[...,0:1].angle()).exp() # the x_tilde in Duong's paper
+        data = x_.reshape(N*F, M)
+        I = data.shape[0]
+        C = [[i] for i in range(I)]  # initial cluster
+
+        "calc. affinity matrix and linkage"
+        perms = torch.combinations(torch.arange(len(C)))
+        d = data[perms]
+        table = ((d[:,0] - d[:,1]).abs()**2).sum(dim=-1)**0.5
+        from scipy.cluster.hierarchy import dendrogram, linkage
+        z = linkage(table, method='average')
+        if showfig: dn = dendrogram(z, p=3, truncate_mode='level')
+
+        "find the max J cluster and sample index"
+        zind = torch.tensor(z).to(torch.int)
+        flag = torch.cat((torch.ones(I), torch.zeros(I)))
+        c = C + [[] for i in range(I)]
+        for i in range(z.shape[0]-K): # threshold of K level to stop
+            c[i+I] = c[zind[i][0]] + c[zind[i][1]]
+            flag[i+I], flag[zind[i][0]], flag[zind[i][1]] = 1, 0, 0
+        ind = (flag == 1).nonzero(as_tuple=True)[0]
+        dict_c = {}  # which_cluster: how_many_nodes
+        for i in range(ind.shape[0]):
+            dict_c[ind[i].item()] = len(c[ind[i]])
+        dict_c_sorted = {k:v for k,v in sorted(dict_c.items(), key=lambda x: -x[1])}
+        cs = []
+        for i, (k,v) in enumerate(dict_c_sorted.items()):
+            if i == J:
+                break
+            cs.append(c[k])
+
+        "initil the EM variables"
+        Hhat = torch.rand(M, J, dtype=dtype)
+        Rj = torch.rand(J, M, M, dtype=dtype)
+        for i in range(J):
+            d = data[torch.tensor(cs[i])] # shape of [I_cj, M]
+            Hhat[:,i] = d.mean(0)
+            Rj[i] = (d[..., None] @ d[:,None,:].conj()).mean(0)
+        vhat = torch.ones(N, F, J).abs().to(dtype)
+        Rb = torch.eye(M).to(dtype)*Rbscale
+
+        return vhat, Hhat, Rb, Rj
+
+    def em_func_(self, x, J=3, max_iter=501, lamb=0, init=1):
+        """init=0: random
+            init=1: x_bar original
+            init=else: x_tilde duong's paper
+        """
+        #  EM algorithm for one complex sample
+        N, F, M = x.shape
+        NF= N*F
+        Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
+        if init == 0: # random init
+            vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
+        elif init == 1: #hierarchical initialization -- x_bar
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
+        else:  #hierarchical initialization -- x_tilde
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
+
+        ll_traj = []
+        for i in range(max_iter):
+            "E-step"
+            Rs = vhat.diag_embed()
+            Rcj = Hhat @ Rs @ Hhat.t().conj()
+            Rx = Rcj + Rb
+            W = Rs @ Hhat.t().conj() @ Rx.inverse()
+            shat = W @ x[...,None]
+            Rsshatnf = shat @ shat.transpose(-1,-2).conj() + Rs - W@Hhat@Rs
+
+            Rsshat = Rsshatnf.sum([0,1])/NF
+            Rxshat = (x[..., None] @ shat.transpose(-1,-2).conj()).sum((0,1))/NF
+
+            "M-step"
+            if lamb<0:
+                raise ValueError('lambda should be not negative')
+            elif lamb>0:
+                y = Rsshatnf.diagonal(dim1=-1, dim2=-2)
+                vhat = -0.5/lamb + 0.5*(1+4*lamb*y)**0.5/lamb
+            else:
+                vhat = Rsshatnf.diagonal(dim1=-1, dim2=-2)
+            vhat.real = threshold(vhat.real, floor=1e-10, ceiling=10)
+            vhat.imag = vhat.imag - vhat.imag
+            Hhat = Rxshat @ Rsshat.inverse()
+            Rb = Rxxhat - Hhat@Rxshat.t().conj() - \
+                Rxshat@Hhat.t().conj() + Hhat@Rsshat@Hhat.t().conj()
+            # Rb = threshold(Rb.diag().real, floor=1e-20).diag().to(x.dtype)
+            Rb = Rb.diag().real.diag().to(x.dtype)
+
+            "compute log-likelyhood"
+            for j in range(J):
+                Rj[j] = Hhat[:, j][..., None] @ Hhat[:, j][..., None].t().conj()
+            ll_traj.append(self.calc_ll_cpx2(x, vhat, Rj, Rb).item())
+            if i > 30 and abs((ll_traj[i] - ll_traj[i-3])/ll_traj[i-3]) <1e-4:
+                print(f'EM early stop at iter {i}')
+                break
+
+        return shat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
+
+shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(awgn(x_all[ind], 30), max_iter=301, init=2)
