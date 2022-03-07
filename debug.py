@@ -3,6 +3,8 @@ from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
 torch.set_printoptions(linewidth=160)
+from datetime import datetime
+print('starting date time ', datetime.now())
 
 d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M3FT100_xsh.pt')
 h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
@@ -97,73 +99,6 @@ def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model='')
 
     return (shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze()), g.detach().cpu(), Rb.cpu(), ll_traj
 
-ind = 0
-rid = 182340
-model = f'/home/chenhao1/Hpython/data/nem_ss/models/rid{rid}/model_rid{rid}_41.pt'
-shv, g, Rb, loss = nem_func_less(awgn(x_all[ind], 30), J=3, seed=10, model=model, max_iter=301)
-shat, Hhat, vhat = shv
-
-for i in range(3):
-    plt.figure()
-    plt.imshow(shat.squeeze().abs()[...,i])
-    plt.colorbar()
-    plt.title('plot of s from NEM')
-
-print('h correlation value: ', h_corr(Hhat.squeeze(), h))
-
-#%%
-def get_metric(s, sh, noise):
-    """input signal and reconstructed signal and outpt the sdr. The permutation
-    is inplemented in this function, This funciton can only process 1 sample of J source
-
-    Args:
-        s (tenor): ground truth, shape of [J,N,F]
-        sh (tenor): estimation, shape of [J,N,F]
-        noise (tensor): noise estimation, shape of [M,N,F]
-    """
-    J, N, F = s.shape
-    NF = N*F
-    permutes = list(itertools.permutations(list(range(J))))
-    PsTimessj_hat = s.clone() # init. Ps times sj_hat
-    e_noise = s.clone() # init. e_noise 
-
-    SDR, SIR, SNR, SAR = ([] for i in range(4))
-    for p in permutes:
-        shat = sh[torch.tensor(p)]
-        "get s_target"
-        s_target = ((s*shat.conj()).sum(dim=(-1,-2), keepdim=True) *s)/(s.abs()**2).sum(dim=(-1,-2), keepdim=True)
-        
-        Rss = s.reshape(J, NF) @ s.reshape(J, NF).conj().t()# Rss is the Gram matrix of the sources [J,J]
-        for j in range(J):
-            "get e_interf"
-            temp = (shat[j] * s.conj()).sum(dim=(-1,-2)) #shape of [J]
-            c = Rss.inverse()@ temp[None,:].conj().t()
-            PsTimessj_hat[j] = (c.t().conj()@s.reshape(J, NF)).reshape(N,F)
-            "get e_noise"
-            inner = (shat[j] * noise.conj()).sum(dim=(-1,-2))
-            temp = inner[:,None,None]*noise / (noise.abs()**2).sum(dim=(-1,-2), keepdim=True)
-            e_noise[j] = temp.sum(0)
-        "get e_artif"
-        e_interf = PsTimessj_hat - s_target
-        e_artif = shat - e_noise -PsTimessj_hat
-
-        sdr = (s_target.norm(dim=(-1,-2))/(e_interf+e_noise+e_artif).norm(dim=(-1,-2))).log10()*20
-        sir = (s_target.norm(dim=(-1,-2))/e_interf.norm(dim=(-1,-2))).log10()*20
-        snr = ((s_target+e_interf).norm(dim=(-1,-2))/e_noise.norm(dim=(-1,-2))).log10()*20
-        sar = ((s_target+e_interf+e_noise).norm(dim=(-1,-2))/e_artif.norm(dim=(-1,-2))).log10()*20
-        SDR.append(sdr.mean())
-        SIR.append(sir.mean())
-        SNR.append(snr.mean())
-        SAR.append(sar.mean())
-    return max(SDR), max(SIR), max(SNR), max(SAR)
-
-noise = (x_all[ind] - (Hhat@shat).squeeze()).permute(2,0,1)
-rs0 = get_metric(s[ind], shat.squeeze().permute(2,0,1), noise)
-rs1 = get_metric(s_all[ind].permute(2,0,1), shat.squeeze().abs().permute(2,0,1), noise)
-print(rs0, rs1)
-print('s correlation value: ', s_corr(shat.squeeze().abs(), s_all[ind]))
-
-#%%
 class EM:
     def calc_ll_cpx2(self, x, vhat, Rj, Rb):
         """ Rj shape of [J, M, M]
@@ -314,4 +249,59 @@ class EM:
 
         return shat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
 
-shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(awgn(x_all[ind], 30), max_iter=301, init=2)
+rid = 182340
+model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_41.pt'
+#%%
+NEMs, NEMh, EMs, EMh = [], [], [], []
+for snr in [0, 5, 10, 20, 90]:
+    nemh, emh = [], []
+    nems, ems = [], []
+    for ind in range(100):
+        data = awgn(x_all[ind], snr)
+        shv, g, Rb, loss = nem_func_less(data, J=3, seed=10, model=model, max_iter=301)
+        shat, Hhat, vhat = shv
+        temp = h_corr(Hhat.squeeze(), h)
+        print('NEM h correlation value: ', temp)
+        noise = (x_all[ind] - (Hhat@shat).squeeze()).permute(2,0,1)
+        rs0 = get_metric(s[ind], shat.squeeze().permute(2,0,1), noise)
+        nems.append(rs0[0].item())
+        nemh.append(temp)
+
+        shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(data, max_iter=301, init=2)
+        temp = h_corr(Hhat.squeeze(), h)
+        print('EM h correlation value: ', temp)
+        noise = (x_all[ind] - (Hhat@shat).squeeze()).permute(2,0,1)
+        rs0 = get_metric(s[ind], shat.squeeze().permute(2,0,1), noise)
+        ems.append(rs0[0].item())
+        emh.append(temp)
+    NEMs.append(sum(nems)/100)
+    NEMh.append(sum(nemh)/100)
+    EMs.append(sum(ems)/100)
+    EMh.append(sum(emh)/100)
+    print('done with one snr')
+
+print('End date time ', datetime.now())
+torch.save((NEMs, NEMh, EMs, EMh), 'NEMs_NEMh_EMs_EMh_debug1.pt')
+
+
+
+#%%
+NEMs, NEMh, EMs, EMh = torch.load('NEMs_NEMh_EMs_EMh_debug1.pt')
+plt.figure()
+plt.plot([0, 5, 10, 20, 30], NEMs, '-x')
+plt.plot([0, 5, 10, 20, 30], EMs, '-x')
+plt.legend(['NEM', 'EM'])
+plt.title('SDR value')
+plt.xlabel('SNR')
+plt.ylabel('SDR')
+plt.show()
+
+plt.figure()
+plt.plot([0, 5, 10, 20, 30], NEMh, '-x')
+plt.plot([0, 5, 10, 20, 30], EMh, '-x')
+plt.legend(['NEM', 'EM'])
+plt.title('H correlation value')
+plt.xlabel('SNR')
+plt.ylabel('Correlation')
+plt.show()
+
