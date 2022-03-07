@@ -474,7 +474,8 @@ class NN2(nn.Module):
             DoubleConv(in_channels=self.dz+2, out_channels=64),
             DoubleConv(in_channels=64, out_channels=32),
             DoubleConv(in_channels=32, out_channels=16),
-            DoubleConv(in_channels=16, out_channels=1),
+            DoubleConv(in_channels=16, out_channels=4),
+            OutConv(in_channels=4, out_channels=1),
             ) 
 
         self.im_size = im_size
@@ -527,7 +528,7 @@ class NN2(nn.Module):
             zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
                         self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1) # Shape: Ix(dz*K+2)xNxF
             v = self.decoder(zbd).exp()
-            v_all.append(threshold(v, ceiling=1e4)) # 1e-3 to 1e4
+            v_all.append(threshold(v, floor=1e-6, ceiling=1e3)) # 1e-6 to 1e3
             "Decoder2 get H"
             ang = self.fc_h(z)
             h_all.append((ang*torch.pi*1j*torch.arange(self.M, device=ang.device)).exp())
