@@ -320,46 +320,51 @@ def val_run(data, ginit, model, lb, MJbs=(3,3,64), seed=1):
         print(f'val batch {i} is done')
     return sum(lv)/len(lv)
 
-def metrics(s, s_hat, noise):
-    """This funciton calculates sdr, sir, snr, sar definded in the paper
-    Performance Measurement in Blind Audio Source Separation
+def get_metric(s, sh, noise):
+    """input signal and reconstructed signal and outpt the sdr. The permutation
+    is inplemented in this function, This funciton can only process 1 sample of J source
 
     Args:
-        s (tensor): shape of [J, N,F]
-        s_hat ([tensor]): shape of [J, N,F]
-        noise ([tensor]): shape of [M, N,F]
-
-    Returns:
-        [list of tensors]: sdr, sir, snr, sar
+        s (tenor): ground truth, shape of [J,N,F]
+        sh (tenor): estimation, shape of [J,N,F]
+        noise (tensor): noise estimation, shape of [M,N,F]
     """
     J, N, F = s.shape
     NF = N*F
-
-    "get s_target"
-    s_target = ((s*s_hat.conj()).sum(dim=(-1,-2), keepdim=True) *s)/(s.abs()**2).sum(dim=(-1,-2), keepdim=True)
-    "get e_interf"
+    permutes = list(itertools.permutations(list(range(J))))
     PsTimessj_hat = s.clone() # init. Ps times sj_hat
-    Rss = s.reshape(J, NF) @ s.reshape(J, NF).conj().t()# Rss is the Gram matrix of the sources [J,J]
-    for j in range(J):
-        temp = (s_hat[j] * s.conj()).sum(dim=(-1,-2)) #shape of [J]
-        c = Rss.inverse()@ temp[None,:].conj().t()
-        PsTimessj_hat[j] = (c.t().conj()@s.reshape(J, NF)).reshape(N,F)
-    e_interf = PsTimessj_hat - s_target
-    "get e_noise"
     e_noise = s.clone() # init. e_noise 
-    for j in range(J):
-        inner = (s_hat[j] * noise.conj()).sum(dim=(-1,-2))
-        temp = inner[:,None,None]*noise / (noise.abs()**2).sum(dim=(-1,-2), keepdim=True)
-        e_noise[j] = temp.sum(0)
-    "get e_artif"
-    e_artif = s_hat - e_noise -PsTimessj_hat
 
-    sdr = (s_target.norm()/(e_interf+e_noise+e_artif).norm()).log10()*20
-    sir = (s_target.norm()/e_interf.norm()).log10()*20
-    snr = ((s_target+e_interf).norm()/e_noise.norm()).log10()*20
-    sar = ((s_target+e_interf+e_noise).norm()/e_artif.norm()).log10()*20
-    
-    return sdr, sir, snr, sar
+    SDR, SIR, SNR, SAR = ([] for i in range(4))
+    for p in permutes:
+        shat = sh[torch.tensor(p)]
+        "get s_target"
+        s_target = ((s*shat.conj()).sum(dim=(-1,-2), keepdim=True) *s)/(s.abs()**2).sum(dim=(-1,-2), keepdim=True)
+        
+        Rss = s.reshape(J, NF) @ s.reshape(J, NF).conj().t()# Rss is the Gram matrix of the sources [J,J]
+        for j in range(J):
+            "get e_interf"
+            temp = (shat[j] * s.conj()).sum(dim=(-1,-2)) #shape of [J]
+            c = Rss.inverse()@ temp[None,:].conj().t()
+            PsTimessj_hat[j] = (c.t().conj()@s.reshape(J, NF)).reshape(N,F)
+            "get e_noise"
+            inner = (shat[j] * noise.conj()).sum(dim=(-1,-2))
+            temp = inner[:,None,None]*noise / (noise.abs()**2).sum(dim=(-1,-2), keepdim=True)
+            e_noise[j] = temp.sum(0)
+        "get e_artif"
+        e_interf = PsTimessj_hat - s_target
+        e_artif = shat - e_noise -PsTimessj_hat
+
+        sdr = (s_target.norm(dim=(-1,-2))/(e_interf+e_noise+e_artif).norm(dim=(-1,-2))).log10()*20
+        sir = (s_target.norm(dim=(-1,-2))/e_interf.norm(dim=(-1,-2))).log10()*20
+        snr = ((s_target+e_interf).norm(dim=(-1,-2))/e_noise.norm(dim=(-1,-2))).log10()*20
+        sar = ((s_target+e_interf+e_noise).norm(dim=(-1,-2))/e_artif.norm(dim=(-1,-2))).log10()*20
+        SDR.append(sdr.mean())
+        SIR.append(sir.mean())
+        SNR.append(snr.mean())
+        SAR.append(sar.mean())
+    return max(SDR), max(SIR), max(SNR), max(SAR)
+
 
 def loss_vae(x, x_hat, mu, logvar, beta=1):
     """This is a regular beta-vae loss
