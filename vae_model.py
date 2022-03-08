@@ -41,6 +41,15 @@ class LinearBlock(nn.Module):
         return self.block(x)
 
 
+class Reshape(nn.Module):
+    def __init__(self, *args):
+        super(Reshape, self).__init__()
+        self.shape = args
+
+    def forward(self, x):
+        return x.view(self.shape)
+
+
 class VAE1(nn.Module):
     """This is convolutional version -- ref UNet
     Input shape [I,M,N,F], e.g.[32,3,100,100]"""
@@ -537,6 +546,103 @@ class NN2(nn.Module):
 
         vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
         Hhat = torch.stack(h_all, 2) # shape:[I, M, K], cfloat
+        Rb = threshold(sig_b[:,:,None]**2, 1e-6, 1e3)*torch.ones(batch_size, \
+            self.M, device=sig_b.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
+
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar
+
+
+class NN3(nn.Module):
+    """This is spatial broadcast decoder (SBD) version
+    Input shape [I,M,N,F], e.g.[32,3,100,100]
+    J <=K
+    """
+    def __init__(self, M=3, K=3, im_size=100):
+        super().__init__()
+
+        # Estimate V
+        self.dz = 32
+        self.K, self.M = K, M
+        self.encoder = nn.Sequential(
+            Down(in_channels=1, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=1),
+            )
+        self.fc1 = nn.Linear(25*25, 2*self.dz)
+        self.decoder = nn.Sequential(
+            DoubleConv(in_channels=self.dz+2, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            DoubleConv(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=4),
+            OutConv(in_channels=4, out_channels=1),
+            ) 
+
+        self.im_size = im_size
+        x = torch.linspace(-1, 1, im_size)
+        y = torch.linspace(-1, 1, im_size)
+        x_grid, y_grid = torch.meshgrid(x, y)
+        # Add as constant, with extra dims for N and C
+        self.register_buffer('x_grid', x_grid.view((1, 1) + x_grid.shape))
+        self.register_buffer('y_grid', y_grid.view((1, 1) + y_grid.shape))
+
+        # Estimate H
+        self.h_net = nn.Sequential(
+            Down(in_channels=M*2, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            Reshape([-1,16*25*25]),
+            LinearBlock(16*25*25, 64),
+            nn.Linear(64, K),
+            nn.Tanh()
+            )   
+        
+        # Estimate Rb
+        self.fc_b = nn.Sequential(
+            LinearBlock(self.dz*self.K, 64),
+            nn.Linear(64, 1),
+            )   
+    
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        z_all, v_all  = [], []
+
+        "Neural nets for H"
+        ang = self.h_net(x)
+        Hhat = (ang*torch.pi*1j*torch.arange(self.M, device=ang.device)).exp()
+        
+
+        for i in range(self.K):
+            "Encoder"
+            inp = Hhat[:,i:i+1].t().conj()@x.permute(0,2,3,1).unsqueeze(-1)
+            inp = inp.squeeze().abs()
+            xx = self.encoder(inp[:,None,:,:])
+            "Get latent variable"
+            zz = self.fc1(xx.reshape(batch_size,-1))
+            mu = zz[:,::2]
+            logvar = zz[:,1::2]
+            z = self.reparameterize(mu, logvar)
+            z_all.append(z)
+            
+            "Decoder to get V"
+            # View z as 4D tensor to be tiled across new N and F dimensions            
+            zr = z.view((batch_size, self.dz)+ (1, 1))  #Shape: IxDxNxF
+            # Tile across to match image size
+            zr = zr.expand(-1, -1, self.im_size, self.im_size)  #Shape: IxDx64x64
+            # Expand grids to batches and concatenate on the channel dimension
+            zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
+                        self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1) # Shape: Ix(dz*K+2)xNxF
+            v = self.decoder(zbd).exp()
+            v_all.append(threshold(v, floor=1e-6, ceiling=1e3)) # 1e-6 to 1e3
+
+        "Decoder3 get sig_b"
+        sig_b = self.fc_b(torch.cat(z_all, dim=-1)).exp()
+
+        vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
         Rb = threshold(sig_b[:,:,None]**2, 1e-6, 1e3)*torch.ones(batch_size, \
             self.M, device=sig_b.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
 
