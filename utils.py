@@ -341,11 +341,12 @@ def get_metric(s, sh, noise):
         "get s_target"
         s_target = ((s*shat.conj()).sum(dim=(-1,-2), keepdim=True) *s)/(s.abs()**2).sum(dim=(-1,-2), keepdim=True)
         
-        Rss = s.reshape(J, NF) @ s.reshape(J, NF).conj().t()# Rss is the Gram matrix of the sources [J,J]
+        Rss = s.reshape(J, NF).conj() @ s.reshape(J, NF).t()# Rss is the Gram matrix of the sources [J,J]
+        RSS_inverse = Rss.inverse()
         for j in range(J):
             "get e_interf"
             temp = (shat[j] * s.conj()).sum(dim=(-1,-2)) #shape of [J]
-            c = Rss.inverse()@ temp[None,:].conj().t()
+            c = RSS_inverse@ temp[None,:].conj().t()
             PsTimessj_hat[j] = (c.t().conj()@s.reshape(J, NF)).reshape(N,F)
             "get e_noise"
             inner = (shat[j] * noise.conj()).sum(dim=(-1,-2))
@@ -364,7 +365,6 @@ def get_metric(s, sh, noise):
         SNR.append(snr.mean())
         SAR.append(sar.mean())
     return max(SDR), max(SIR), max(SNR), max(SAR)
-
 
 def loss_vae(x, x_hat, mu, logvar, beta=1):
     """This is a regular beta-vae loss
