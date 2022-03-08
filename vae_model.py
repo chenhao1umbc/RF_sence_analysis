@@ -537,7 +537,7 @@ class NN2(nn.Module):
 
         vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
         Hhat = torch.stack(h_all, 2) # shape:[I, M, K], cfloat
-        Rb = sig_b[:,:,None]**2 * torch.ones(batch_size, \
+        Rb = threshold(sig_b[:,:,None]**2, 1e-6, 1e3)*torch.ones(batch_size, \
             self.M, device=sig_b.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
 
         return vhat.diag_embed(), Hhat, Rb, mu, logvar
