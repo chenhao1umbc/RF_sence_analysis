@@ -590,8 +590,9 @@ class NN3(nn.Module):
         self.h_net = nn.Sequential(
             Down(in_channels=M*2, out_channels=32),
             Down(in_channels=32, out_channels=16),
-            Reshape([-1,16*25*25]),
-            LinearBlock(16*25*25, 64),
+            Down(in_channels=16, out_channels=8),
+            Reshape(-1, 8*12*12),
+            LinearBlock(8*12*12, 64),
             nn.Linear(64, K),
             nn.Tanh()
             )   
@@ -612,14 +613,13 @@ class NN3(nn.Module):
         z_all, v_all  = [], []
 
         "Neural nets for H"
-        ang = self.h_net(x)
-        Hhat = (ang*torch.pi*1j*torch.arange(self.M, device=ang.device)).exp()
-        
-
+        ang = self.h_net(torch.cat((x.real, x.imag), dim=1))
+        ch = torch.pi*torch.arange(self.M, device=ang.device)
+        Hhat = ((ch[:,None] @ ang[:,None])*1j).exp()
         for i in range(self.K):
             "Encoder"
-            inp = Hhat[:,i:i+1].t().conj()@x.permute(0,2,3,1).unsqueeze(-1)
-            inp = inp.squeeze().abs()
+            inp = Hhat[...,i:i+1].transpose(-1,-2).conj()@x.permute(2,3,0,1).unsqueeze(-1)
+            inp = inp.squeeze().abs().permute(2,0,1)
             xx = self.encoder(inp[:,None,:,:])
             "Get latent variable"
             zz = self.fc1(xx.reshape(batch_size,-1))
