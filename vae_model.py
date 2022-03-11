@@ -373,7 +373,7 @@ class NN0(nn.Module):
 
 
 class NN1(nn.Module):
-    """This is spatial broadcast decoder (SBD) version
+    """This is spatial broadcast decoder (SBD) version, similar to Neri's
     Input shape [I,M,N,F], e.g.[32,3,100,100]
     J <=K
     """
@@ -462,7 +462,7 @@ class NN1(nn.Module):
 
 
 class NN2(nn.Module):
-    """This is spatial broadcast decoder (SBD) version
+    """This is input is x and H_init
     Input shape [I,M,N,F], e.g.[32,3,100,100]
     J <=K
     """
