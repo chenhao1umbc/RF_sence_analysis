@@ -442,6 +442,7 @@ if True:
     s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
     torch.save((x[9500:], s, h[9000:3500]), f'test500M3FT{FT}_xsh_ang6915-30.pt')
     print('done')
+
 ############################################## Testing ########################################
 #%% test CNN nem
     import itertools, time
