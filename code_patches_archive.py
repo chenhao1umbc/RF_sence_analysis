@@ -3046,7 +3046,6 @@ if True:
                 break
     plt.plot(c, '-x')
 
-
 #%% validation value check
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
@@ -3088,7 +3087,6 @@ if True:
         plt.savefig(f'id{rid} validation likelihood')
         plt.close()
     print('End date time ', datetime.now())
-
 
 #%% Use H to do classification, if ground truth h is available
     from utils import *
