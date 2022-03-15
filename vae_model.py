@@ -637,13 +637,13 @@ class NN3(nn.Module):
             zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
                         self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1) # Shape: Ix(dz*K+2)xNxF
             v = self.decoder(zbd).exp()
-            v_all.append(threshold(v, floor=1e-6, ceiling=1e3)) # 1e-6 to 1e3
+            v_all.append(threshold(v, floor=1e-4, ceiling=1e3)) # 1e-6 to 1e3
 
         "Decoder3 get sig_b"
         sig_b = self.fc_b(torch.cat(z_all, dim=-1)).exp()
 
         vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
-        Rb = threshold(sig_b[:,:,None]**2, 1e-6, 1e3)*torch.ones(batch_size, \
+        Rb = threshold(sig_b[:,:,None]**2, 1e-4, 1e3)*torch.ones(batch_size, \
             self.M, device=sig_b.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
 
         return vhat.diag_embed(), Hhat, Rb, mu, logvar
@@ -725,7 +725,7 @@ class NN4(nn.Module):
         ch = torch.pi*torch.arange(self.M, device=ang.device)
         Hhat = ((ch[:,None] @ ang[:,None])*1j).exp()
         "Get Rb"
-        Rb = threshold(sig_b[:,:,None]**2, 1e-5, 1e2)*torch.ones(batch_size, \
+        Rb = threshold(sig_b[:,:,None]**2, 1e-4, 1e2)*torch.ones(batch_size, \
             self.M, device=sig_b.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
         "Wienter filter to get coarse shat"
         Rs = V_coarse.reshape(batch_size,self.K,N,F).permute(0,2,3,1).diag_embed() # shape of [I, N, F, J, J]
@@ -752,7 +752,7 @@ class NN4(nn.Module):
             zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
                         self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1) # Shape: Ix(dz*K+2)xNxF
             v = self.decoder(zbd).exp()
-            v_all.append(threshold(v, floor=1e-6, ceiling=1e3)) # 1e-6 to 1e3
+            v_all.append(threshold(v, floor=1e-4, ceiling=1e3)) # 1e-4 to 1e3
         vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
 
         return vhat.diag_embed(), Hhat, Rb, mu, logvar
