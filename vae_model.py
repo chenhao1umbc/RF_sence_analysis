@@ -1162,3 +1162,106 @@ class NN3_2(nn.Module):
             device=vhat.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
 
         return vhat.diag_embed(), Hhat, Rb, mu, logvar
+
+
+class NN6_1(nn.Module):
+    """This is Wiener filter version without Rb, Vcoarse_k is averaged, upconv not sbd
+    Input shape [I,M,N,F], e.g.[32,3,100,100]
+    J <=K
+    """
+    def __init__(self, M=3, K=3, im_size=100):
+        super().__init__()
+        self.dz = 32
+        self.K, self.M = K, M
+
+        # Estimate H and coarse V
+        self.v_net = nn.Sequential(
+            DoubleConv(in_channels=M*2, out_channels=32),
+            DoubleConv(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=4),
+            ) 
+        self.v_out = OutConv(in_channels=4, out_channels=K)
+        self.hb_net = nn.Sequential(
+            Down(in_channels=4, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            Down(in_channels=16, out_channels=8),
+            Reshape(-1, 8*12*12),
+            )
+        # Estimate H
+        self.h_net = nn.Sequential(
+            LinearBlock(8*12*12, 64),
+            nn.Linear(64, K),
+            nn.Tanh()
+            )   
+        # Estimate Rb
+        self.b_net = nn.Sequential(
+            LinearBlock(8*12*12, 64),
+            nn.Linear(64, 1),
+            )   
+        # Estimate V using auto encoder
+        self.encoder = nn.Sequential(
+            Down(in_channels=1, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=1),
+            )
+        self.fc1 = nn.Linear(25*25, 2*self.dz)
+        self.fc2 = nn.Linear(self.dz, 25*25)
+        self.decoder = nn.Sequential(
+            Up_(in_channels=1, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            Up_(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=4),
+            OutConv(in_channels=4, out_channels=1),
+            ) 
+        self.im_size = im_size
+        x = torch.linspace(-1, 1, im_size)
+        y = torch.linspace(-1, 1, im_size)
+        x_grid, y_grid = torch.meshgrid(x, y)
+        # Add as constant, with extra dims for N and C
+        self.register_buffer('x_grid', x_grid.view((1, 1) + x_grid.shape))
+        self.register_buffer('y_grid', y_grid.view((1, 1) + y_grid.shape))
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def forward(self, x):
+        batch_size, _, N, F = x.shape
+        v_all  = []
+
+        "Neural nets for H,V"
+        temp = self.v_net(torch.cat((x.real, x.imag), dim=1))
+        V_coarse = threshold(self.v_out(temp), 1e-4, 1e3).mean((-1,-2)).to(torch.cfloat)
+        hb = self.hb_net(temp)
+        ang = self.h_net(hb)
+        # sig_b = self.b_net(hb).exp()
+        "Get H"
+        ch = torch.pi*torch.arange(self.M, device=ang.device)
+        Hhat = ((ch[:,None] @ ang[:,None])*1j).exp()
+        "Get Rb"
+        Rb = 1e-5*torch.ones(batch_size, \
+            self.M, device=ch.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
+        "Wienter filter to get coarse shat"
+        Rs = V_coarse.diag_embed() # shape of [I, J, J]
+        Rx = Hhat @ Rs @ Hhat.transpose(-1,-2).conj() + Rb # shape of [I,M,M]
+        W = Rs @ Hhat.transpose(-1,-2).conj() @ Rx.inverse()  # shape of [I,J,M]
+        shat = (W @ x.permute(2,3,0,1)[...,None]).squeeze().permute(2,3,0,1)
+        
+        for i in range(self.K):
+            "Encoder"
+            xx = self.encoder(shat[:,i:i+1].abs())
+            "Get latent variable"
+            zz = self.fc1(xx.reshape(batch_size,-1))
+            mu = zz[:,::2]
+            logvar = zz[:,1::2]
+            z = self.reparameterize(mu, logvar)
+            
+            "Decoder to get V"
+            zz = self.fc2(z)
+            v = self.decoder(zz.reshape(zz.shape[0],1,25,25)).exp()
+            v_all.append(threshold(v, floor=1e-4, ceiling=1e3)) # 1e-4 to 1e3
+        vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
+
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar
