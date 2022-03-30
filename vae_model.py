@@ -1124,7 +1124,7 @@ class NN3_2(nn.Module):
         z_all, v_all  = [], []
 
         "Neural nets for H"
-        Hhat_all = torch.rand(self.M, x.shape[0], self.M, self.K)
+        Hhat_all = torch.rand(self.M, x.shape[0], self.M, self.K).to(torch.cfloat).cuda()
         for i in range(self.M):
             ang = self.h_net(torch.cat((x[:,i:i+1].real, x[:,i:i+1].imag), dim=1))
             ch = torch.pi*torch.arange(self.M, device=ang.device)
