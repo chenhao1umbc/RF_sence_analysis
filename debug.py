@@ -1,4 +1,4 @@
-#%% v20000
+#%% v10700
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -13,9 +13,8 @@ if torch.__version__[:5] != '1.8.1':
     RAdam = torch.optim.RAdam
 else:
     RAdam = optim.RAdam
-#%%
-torch.autograd.set_detect_anomaly(True)
-from vae_model import NN7 as NN
+
+from vae_model import NN6_5 as NN
 def loss_fun(x, Rs, Hhat, Rb, mu, logvar, beta=0.5):
     x = x.permute(0,2,3,1)
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
@@ -24,7 +23,7 @@ def loss_fun(x, Rs, Hhat, Rb, mu, logvar, beta=0.5):
     ll = -(np.pi*mydet(Rx)).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze() 
     return -ll.sum().real + beta*kl
 
-rid = 'v20000' # running id
+rid = '10700' # running id
 fig_loc = '../data/nem_ss/figures/'
 mod_loc = '../data/nem_ss/models/'
 if not(os.path.isdir(fig_loc + f'/rid{rid}/')): 
@@ -34,12 +33,12 @@ if not(os.path.isdir(fig_loc + f'/rid{rid}/')):
 fig_loc = fig_loc + f'rid{rid}/'
 mod_loc = mod_loc + f'rid{rid}/'
 
-I = 300 # how many samples
+I = 3000 # how many samples
 M, N, F, K = 3, 100, 100, 3
 NF = N*F
 eps = 5e-4
 opts = {}
-opts['batch_size'] = 5
+opts['batch_size'] = 100
 opts['lr'] = 1e-3
 opts['n_epochs'] = 1500
 
@@ -48,7 +47,7 @@ xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]) # [sample,M,N,F]
 xtr = xtr.to(torch.cfloat)
 data = Data.TensorDataset(xtr[:I])
 tr = Data.DataLoader(data, batch_size=opts['batch_size'], shuffle=True, drop_last=True)
-xval, _ , hgt = d = torch.load('../data/nem_ss/val500M3FT100_xsh.pt')
+xval, _ , hgt = torch.load('../data/nem_ss/val500M3FT100_xsh.pt')
 xval_cuda = xval[:128].to(torch.cfloat).cuda()
 
 loss_iter, loss_tr, loss_eval = [], [], []
@@ -109,7 +108,7 @@ for epoch in range(opts['n_epochs']):
                 plt.savefig(fig_loc + f'Epoch{epoch}_estimated V-{ii}')
                 plt.show()
                 plt.close('all')
-            print(f'epoch{epoch} h_corr is ', h_corr(hh.cpu(), torch.tensor(hgt)))
+            print(f'epoch{epoch} h_corr is ', h_corr(hh.cpu(), torch.tensor(hgt)[0]))
         torch.save(model, mod_loc+f'modle_epoch{epoch}.pt')
 print('done')
 # %%
