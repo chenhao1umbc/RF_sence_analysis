@@ -1383,3 +1383,125 @@ class NN6_2(nn.Module):
         vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
 
         return vhat.diag_embed(), Hhat, Rb, mu, logvar
+
+
+class NN7(nn.Module):
+    """This is recursive Wiener filter version
+    Input shape [I,M,N,F], e.g.[32,3,100,100]
+    J <=K
+    """
+    def __init__(self, M=3, K=3, im_size=100):
+        super().__init__()
+        self.dz = 32
+        self.K, self.M = K, M
+
+        # Estimate H and coarse V
+        self.v_net = nn.Sequential(
+            DoubleConv(in_channels=M*2, out_channels=32),
+            DoubleConv(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=4),
+            ) 
+        self.v_out = OutConv(in_channels=4, out_channels=1)
+        self.hb_net = nn.Sequential(
+            Down(in_channels=1, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            Down(in_channels=16, out_channels=8),
+            Reshape(-1, 8*12*12),
+            )
+        # Estimate H
+        self.h_net = nn.Sequential(
+            LinearBlock(8*12*12, 64),
+            nn.Linear(64, 32),
+            nn.Linear(32, 1),
+            nn.Tanh()
+            )   
+        # Estimate Rb
+        self.b_net = nn.Sequential(
+            LinearBlock(8*12*12, 64),
+            nn.Linear(64, 32),
+            nn.Linear(32, 1),
+            )   
+        # Estimate V using auto encoder
+        self.encoder = nn.Sequential(
+            Down(in_channels=1, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=1),
+            )
+        self.fc1 = nn.Linear(25*25, 2*self.dz)
+        self.decoder = nn.Sequential(
+            DoubleConv(in_channels=self.dz+2, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            DoubleConv(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=4),
+            OutConv(in_channels=4, out_channels=1),
+            ) 
+        self.im_size = im_size
+        x = torch.linspace(-1, 1, im_size)
+        y = torch.linspace(-1, 1, im_size)
+        x_grid, y_grid = torch.meshgrid(x, y)
+        # Add as constant, with extra dims for N and C
+        self.register_buffer('x_grid', x_grid.view((1, 1) + x_grid.shape))
+        self.register_buffer('y_grid', y_grid.view((1, 1) + y_grid.shape))
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def forward(self, x):
+        batch_size, _, N, F = x.shape
+        z_all, v_all, h_all = [], [], []
+
+        "Neural nets for H,V"
+        for i in range(self.K):
+            if i == 0:
+                inp = x
+            else:
+                temp = hj[...,None]@W@inp.permute(2,3,0,1)[...,None]
+                inp = inp - temp.squeeze().permute(2,3,0,1)
+            temp = self.v_net(torch.cat((inp.real, inp.imag), dim=1)).exp() 
+            vj = self.v_out(temp).exp() #sigma_s**2 >=0
+            vj = threshold(vj, floor=1e-4, ceiling=1e3)  # shape of [I, 1, N, F]
+            hb = self.hb_net(vj)
+            ang = self.h_net(hb)  # shape of [I,1]
+            sig_b_squared = self.b_net(hb).exp() # shape of [I,1]
+            "Get H"
+            ch = torch.pi*torch.arange(self.M, device=ang.device)
+            hj = ((ang @ ch[None,:])*1j).exp() # shape:[I, M]
+            h_all.append(hj)
+
+            "Get Rb, the energy of the rest"
+            Rb = threshold(sig_b_squared[:,:,None]**2, 1e-4, 1e2)*torch.ones(batch_size, \
+                self.M, device=ch.device).diag_embed().to(torch.cfloat) # shape:[I, M, M]
+
+            "Wienter filter to get coarse shat"
+            Rs = vj.permute(2,3,0,1)[..., None].to(torch.cfloat)  #shape of [N,F,I,1,1]
+            Rx = hj[...,None] @ Rs @ hj[:,None].conj() + Rb # shape of [N,F,I,M,M]
+            W = Rs @ hj[:, None,].conj() @ Rx.inverse()  # shape of [N,F,I,1,M]
+            shat = (W @ x.permute(2,3,0,1)[...,None]).squeeze().permute(2,0,1) #[I, N, F]
+        
+            "Encoder"
+            xx = self.encoder(shat[:,None].abs())
+            "Get latent variable"
+            zz = self.fc1(xx.reshape(batch_size,-1))
+            mu = zz[:,::2]
+            logvar = zz[:,1::2]
+            z = self.reparameterize(mu, logvar)
+            z_all.append(z)
+            
+            "Decoder to get V"
+            # View z as 4D tensor to be tiled across new N and F dimensions            
+            zr = z.view((batch_size, self.dz)+ (1, 1))  #Shape: IxDxNxF
+            # Tile across to match image size
+            zr = zr.expand(-1, -1, self.im_size, self.im_size)  #Shape: IxDx64x64
+            # Expand grids to batches and concatenate on the channel dimension
+            zbd = torch.cat((self.x_grid.expand(batch_size, -1, -1, -1),
+                        self.y_grid.expand(batch_size, -1, -1, -1), zr), dim=1) # Shape: Ix(dz*K+2)xNxF
+            v = self.decoder(zbd).exp()
+            v_all.append(threshold(v, floor=1e-4, ceiling=1e3)) # 1e-4 to 1e3
+        Hhat = torch.stack(h_all, 2) # shape:[I, M, K]
+        vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
+
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar
+
