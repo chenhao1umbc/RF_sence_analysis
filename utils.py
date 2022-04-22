@@ -223,7 +223,7 @@ def awgn(xx, snr=20, seed=None):
     x = x + noise 
     return x
 
-def awgn_batch(xx, snr, seed=None):
+def awgn_batch(xx, snr=30, seed=None):
     """
     This function is adding white guassian noise to the given complex signal
     :param x: the given signal with shape of [I, N, F, J(Channel, M actually)]

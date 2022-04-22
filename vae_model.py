@@ -1571,7 +1571,7 @@ class NN7(nn.Module):
                 inp = inp - temp.squeeze().permute(2,3,0,1)
             temp = self.v_net(torch.cat((inp.real, inp.imag), dim=1)).exp() 
             vj = self.v_out(temp).exp() #sigma_s**2 >=0
-            vj = threshold(vj, floor=1e-3, ceiling=1e3)  # shape of [I, 1, N, F]
+            vj = threshold(vj, floor=1e-3, ceiling=1e2)  # shape of [I, 1, N, F]
             hb = self.hb_net(vj)
             ang = self.h_net(hb)  # shape of [I,1]
             sig_b_squared = self.b_net(hb).exp() # shape of [I,1]
