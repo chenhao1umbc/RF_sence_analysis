@@ -1,2 +1,2 @@
 # nem_ss
-Nerual EM for source separation
+This is the fully nerual network for source separation
