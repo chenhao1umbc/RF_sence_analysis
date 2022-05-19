@@ -5,6 +5,9 @@ if True:
     plt.rcParams['figure.dpi'] = 150
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
+    
+    import matplotlib
+    matplotlib.rc('font', size=22)
 
 #%% plot rid140100 details
     "This code shows EM is boosted by a little bit noise"
@@ -178,4 +181,63 @@ if True:
     # plt.ylim([0.5, 1])
     plt.legend(['EM Correlation for h', 'NEM Correlation for h'])
     plt.title('Correlation for h')
-#%%
+
+    matplotlib.rc('font', size=16)
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'],  [0.6351, 0.7451, 0.7928, 0.8059, 0.8109 ], '--x')
+    ss = [0.6708, 0.8032, 0.8690, 0.9151, 0.9218]
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'],[0.8520, 0.8616, 0.8671, 0.8682, 0.8755], '--x')
+    hh = [0.8721, 0.8910, 0.9007, 0.9092, 0.9099]
+    plt.plot([0, 5, 10, 20, 'inf'], hh, '-o')
+    plt.ylabel('Corr.', fontsize=16)
+    plt.xlabel('SNR', fontsize=16)
+    plt.legend(['EM for s', 'NEM for s', 'EM for h', 'NEM for h'], prop={'size': 16})
+    plt.savefig('6hs.eps', bbox_inches = 'tight')
+
+
+#%% 182340
+    matplotlib.rc('font', size=16)
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], [0.7099, 0.8650, 0.9360, 0.9580, 0.9499 ], '-x')
+    ss = [0.7999, 0.9250, 0.9630, 0.9980, 0.9999]
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-o')
+    # plt.ylim([0.5, 1])
+    plt.ylabel('Averaged correlation result')
+    plt.xlabel('SNR')
+    plt.legend(['EM ', 'NEM'])
+    # plt.title('Correlation for s')
+    plt.savefig('3s.eps')
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], [0.8550, 0.9216, 0.9571, 0.9682, 0.9675], '-x')
+    ss = [0.941, 0.970, 0.9717, 0.991, 0.9999]
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-o')
+    plt.ylabel('Averaged correlation result')
+    plt.xlabel('SNR')
+    # plt.ylim([0.5, 1])
+    plt.legend(['EM ', 'NEM '])
+    # plt.title('Correlation for h')
+    plt.savefig('3h.eps')
+
+    matplotlib.rc('font', size=16)
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], [0.7099, 0.8650, 0.9360, 0.9580, 0.9499 ], '--x')
+    ss = [0.7999, 0.9250, 0.9630, 0.9980, 0.9999]
+    plt.plot([0, 5, 10, 20, 'inf'], ss, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], [0.8550, 0.9216, 0.9571, 0.9682, 0.9675], '--x')
+    hh = [0.941, 0.970, 0.9717, 0.991, 0.9999]
+    plt.plot([0, 5, 10, 20, 'inf'], hh, '-o')
+    plt.ylabel('Corr.', fontsize=16)
+    plt.xlabel('SNR', fontsize=16)
+    plt.legend(['EM for s', 'NEM for s', 'EM for h', 'NEM for h'], prop={'size': 16})
+    plt.savefig('3hs.eps', bbox_inches = 'tight')
+
+#%% plot mixture
+    d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M3FT100_xsh.pt')
+    h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
+    ratio = d.abs().amax(dim=(1,2,3))
+    x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
+    
+    plt.imshow(x_all[0,...,0].abs())
+    plt.colorbar()
