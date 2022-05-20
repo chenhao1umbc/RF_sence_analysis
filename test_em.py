@@ -8,7 +8,7 @@ print('starting date time ', datetime.now())
 #%%
 d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
 h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
-d = awgn_batch(d.permute(0,2,3,1), snr=30).permute(0,3,1,2)
+d = awgn_batch(d.permute(0,2,3,1), snr=40).permute(0,3,1,2)
 ratio = d.abs().amax(dim=(1,2,3))
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
 s_all = s.abs().permute(0,2,3,1) 
