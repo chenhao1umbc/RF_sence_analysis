@@ -9,7 +9,7 @@ print('starting date time ', datetime.now())
 d, s, h = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
 h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
 d = awgn_batch(d.permute(0,2,3,1), snr=30).permute(0,3,1,2)
-ratio = d.abs().amax(dim=(1,2,3))/3
+ratio = d.abs().amax(dim=(1,2,3))
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
 s_all = s.abs().permute(0,2,3,1) 
 
@@ -328,7 +328,7 @@ for snr in [0, 5, 10, 20, 90]:
     hh, ems = [], []
     for ind in range(100):
         data = awgn(x_all[ind], snr)
-        shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(data, max_iter=301, init=1)
+        shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(data, J=3, max_iter=301, init=1)
         temp = h_corr(Hhat.squeeze(), h)
         print('EM h correlation value: ', temp)
 
