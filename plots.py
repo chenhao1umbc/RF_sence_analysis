@@ -7,7 +7,7 @@ if True:
     torch.set_default_dtype(torch.double)
     
     import matplotlib
-    matplotlib.rc('font', size=22)
+    matplotlib.rc('font', size=16)
 
 #%% plot rid140100 details
     "This code shows EM is boosted by a little bit noise"
@@ -173,7 +173,7 @@ if True:
     plt.title('Correlation for s')
 
     plt.figure()
-    plt.plot([0, 5, 10, 20, 'inf'], [0.8520, 0.8616, 0.8671, 0.8682, 0.8755], '-x')
+    plt.plot([0, 5, 10, 20, 'inf'], [0.7491, 0.7982, 0.8436, 0.8568, 0.8533], '-x')
     ss = [0.8721, 0.8910, 0.9007, 0.9092, 0.9099]
     plt.plot([0, 5, 10, 20, 'inf'], ss, '-x')
     plt.ylabel('Averaged correlation result')
@@ -187,14 +187,13 @@ if True:
     plt.plot([0, 5, 10, 20, 'inf'],  [0.6351, 0.7451, 0.7928, 0.8059, 0.8109 ], '--x')
     ss = [0.6708, 0.8032, 0.8690, 0.9151, 0.9218]
     plt.plot([0, 5, 10, 20, 'inf'], ss, '-o')
-    plt.plot([0, 5, 10, 20, 'inf'],[0.8520, 0.8616, 0.8671, 0.8682, 0.8755], '--x')
+    plt.plot([0, 5, 10, 20, 'inf'],[0.7491, 0.7982, 0.8436, 0.8568, 0.8533], '--x')
     hh = [0.8721, 0.8910, 0.9007, 0.9092, 0.9099]
     plt.plot([0, 5, 10, 20, 'inf'], hh, '-o')
     plt.ylabel('Corr.', fontsize=16)
     plt.xlabel('SNR', fontsize=16)
     plt.legend(['EM for s', 'NEM for s', 'EM for h', 'NEM for h'], prop={'size': 16})
     plt.savefig('6hs.eps', bbox_inches = 'tight')
-
 
 #%% 182340
     matplotlib.rc('font', size=16)
