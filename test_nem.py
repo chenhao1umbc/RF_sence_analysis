@@ -9,8 +9,9 @@ seed - random seed number
 rid - training model index
 model - saved trained model
 """
-
 from utils import *
+import matplotlib
+matplotlib.rc('font', size=16)
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 plt.rcParams['figure.dpi'] = 150
 torch.set_printoptions(linewidth=160)
@@ -21,10 +22,11 @@ import time
 t = time.time()
 d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M6FT100_xsh.pt')
 h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
-ratio = d.abs().amax(dim=(1,2,3))/3
+ratio = d.abs().amax(dim=(1,2,3))
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
 s_all = s.abs().permute(0,2,3,1) 
 
+#%%
 def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model=''):
     def log_likelihood(x, vhat, Hhat, Rb, ):
         """ Hhat shape of [I, M, J] # I is NO. of samples, M is NO. of antennas, J is NO. of sources
@@ -116,35 +118,24 @@ def nem_func_less(x, J=6, Hscale=1, Rbscale=100, max_iter=501, seed=1, model='')
 
     return (shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze()), g.detach().cpu(), Rb.cpu(), ll_traj
 
-rid = 171000
-model = f'/home/chenhao1/Hpython/data/nem_ss/models/rid{rid}/model_rid{rid}_45.pt'
-# rid = 160100
-# model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_33.pt'
-which_class, ind, M = [0,5], 15, 3
+rid = 160100
+model = f'../data/nem_ss/models/rid1+/rid{rid}/model_rid{rid}_33.pt'
+which_class, ind = [0,1,2,3,4,5], 0
+M, J = 6, len(which_class)
 for i, v in enumerate(which_class):
     if i == 0 : d = 0
     d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
 r = d.abs().max()
 d = d.reshape(M, N, F).permute(1,2,0)/r
 
-shv, g, Rb, loss = nem_func_less(awgn(d, 30), J=3, seed=10, model=model, max_iter=301)
+shv, g, Rb, loss = nem_func_less(awgn(d, 30), J=J, seed=10, model=model, max_iter=301)
 shat, Hhat, vhat = shv
 
-c = torch.rand(100,100,3,3).to(torch.cfloat)
-for i in range(3):
-    c[:,:,i] = shat.squeeze()[...,i][..., None] @ Hhat.squeeze()[None, :, i]
-    print(c[:,:,i].norm())
-
-for i in range(3):
+for i in range(6):
     plt.figure()
-    plt.imshow(c[:,:,i].squeeze().abs()[...,i]*r)
-    plt.title('plot of c from NEM')
+    plt.imshow((shat.squeeze()[...,i]*Hhat[0,0,i]).abs()*ratio[ind])
     plt.colorbar()
-
-for i in range(3):
-    plt.figure()
-    plt.imshow(shat.squeeze().abs()[...,i])
-    plt.colorbar()
+    plt.show()
     plt.title('plot of s from NEM')
 
 for i, v in enumerate(which_class):
@@ -153,12 +144,3 @@ for i, v in enumerate(which_class):
     plt.colorbar()
 print('done')
 
-def hcorr(h, hh):
-    n = h[None, :] @ hh[..., None].conj()
-    d = h.norm() * hh.norm()
-    return n.abs()/d
-
-for v in which_class:
-    print(f'class {v}')
-    for i in range(3):
-        print(hcorr(h[:M, v], Hhat.squeeze()[:,i]))
