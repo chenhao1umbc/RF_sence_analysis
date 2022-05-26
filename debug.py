@@ -26,7 +26,7 @@ ratio = d.abs().amax(dim=(1,2,3))
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
 s_all = s.abs().permute(0,2,3,1) 
 
-#%%
+#%% loading data and functions
 def cluster_init(x, J=3, K=60, init=1, Rbscale=1, showfig=False):
     """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
     Given : A set X of obejects{x1,...,xn}
@@ -280,42 +280,6 @@ def nem_hci(x, J=6, Hscale=1, Rbscale=1, max_iter=501, seed=1, model=''):
 
     return (shat.cpu(), Hhat.cpu(), vhat.cpu().squeeze()), g.detach().cpu(), Rb.cpu(), ll_traj
 
-which_class, ind = [0,1,2,3,4,5], 0
-M, J = 6, len(which_class)
-for i, v in enumerate(which_class):
-    if i == 0 : d = 0
-    d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
-r = d.abs().max()
-d = d.reshape(M, N, F).permute(1,2,0)/r
-
-# rid = 160100
-# model = f'../data/nem_ss/models/rid1+/rid{rid}/model_rid{rid}_33.pt'
-# shv, g, Rb, loss = nem_func_less(awgn(d, 30), J=J, seed=10, model=model, max_iter=301)
-
-rid = 184000
-model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_30.pt'
-shv, g, Rb, loss = nem_hci(awgn(d, 30), J=J, seed=10, model=model, max_iter=301)
-
-shat, Hhat, vhat = shv
-name = ['ble', 'fhss2', 'fhss1', 'wifi2', 'wifi1', 'bt']
-for i in range(6):
-    plt.figure()
-    plt.imshow((shat.squeeze()[...,i]*Hhat[0,0,i]).abs()*ratio[ind])
-    plt.colorbar()
-    # plt.savefig('nem_'+name[i]+'.eps')
-    plt.show()
-    # plt.title('plot of s from NEM')
-
-print('s_corr', s_corr(shat.squeeze().abs(), s_all[ind].abs()))
-# for i, v in enumerate(which_class):
-#     plt.figure()
-#     plt.imshow(s[ind, v].squeeze().abs())
-#     plt.colorbar()
-#     plt.title('GT')
-print('done')
-
-
-#%%
 class EM:
     def calc_ll_cpx2(self, x, vhat, Rj, Rb):
         """ Rj shape of [J, M, M]
@@ -423,7 +387,7 @@ class EM:
         if init == 0: # random init
             vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
         elif init == 1: #hierarchical initialization -- x_bar
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, K=14, init=init)
         else:  #hierarchical initialization -- x_tilde
             vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
 
@@ -466,6 +430,51 @@ class EM:
 
         return shat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
 
+which_class, ind = [0,1,2,3,4,5], 0
+M, J = 3, len(which_class)
+for i, v in enumerate(which_class):
+    if i == 0 : d = 0
+    d = d + h[:M, v, None] @ s[ind, v].reshape(1, N*F)
+r = d.abs().max()
+d = d.reshape(M, N, F).permute(1,2,0)/r
+data = awgn(d, 30)
+
+#%% NEM
+# rid = 160100
+# model = f'../data/nem_ss/models/rid1+/rid{rid}/model_rid{rid}_33.pt'
+# shv, g, Rb, loss = nem_func_less(awgn(d, 30), J=J, seed=10, model=model, max_iter=301)
+
+rid = 184000
+model = f'../data/nem_ss/models/rid{rid}/model_rid{rid}_30.pt'
+shv, g, Rb, loss = nem_hci(data, J=J, seed=10, model=model, max_iter=301)
+
+shat, Hhat, vhat = shv
+name = ['ble', 'fhss2', 'fhss1', 'wifi2', 'wifi1', 'bt']
+for i in range(6):
+    plt.figure()
+    plt.imshow((shat.squeeze()[...,i]*Hhat[0,0,i]).abs()*ratio[ind])
+    plt.colorbar()
+    # plt.savefig('nem_'+name[i]+'.eps')
+    plt.show()
+    # plt.title('plot of s from NEM')
+
+print('s_corr', s_corr(shat.squeeze().abs(), s_all[ind].abs()))
+# for i, v in enumerate(which_class):
+#     plt.figure()
+#     plt.imshow(s[ind, v].squeeze().abs())
+#     plt.colorbar()
+#     plt.title('GT')
+print('done')
+
+
+#%% EM
+
 shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(awgn(d, 30), J=J, max_iter=301, init=1)
-print('s_corr', s_corr(shat.squeeze().abs(), s_all[0].abs()))
-print(shat.shape)
+print('s_corr', s_corr(shat.squeeze().abs(), s_all[ind].abs()))
+print('h_corr', h_corr(h[:M], Hhat))
+for i in range(6):
+    plt.figure()
+    plt.imshow((shat.squeeze()[...,i]*Hhat[0,i]).abs()*ratio[ind])
+    plt.colorbar()
+    # plt.savefig('nem_'+name[i]+'.eps')
+    plt.show()
