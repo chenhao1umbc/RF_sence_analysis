@@ -286,7 +286,7 @@ def nem_hci(x, J=6, Hscale=1, Rbscale=1, max_iter=501, seed=1, model=''):
 for db in [30,20,10,5,0]:
     res_s, res_h = [], []
     for ii in range(100):
-        which_class, ind = [0,1,2,3,4,5], ii+1
+        which_class, ind = [0,1,2,3,4,5], ii
         M, J = 3, len(which_class)
         for i, v in enumerate(which_class):
             if i == 0 : d = 0
