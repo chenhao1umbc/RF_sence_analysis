@@ -9,6 +9,20 @@ if True:
     import matplotlib
     matplotlib.rc('font', size=16)
 
+#%% plot the test samples
+    d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M6FT100_xsh.pt')
+    h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
+    ratio = d.abs().amax(dim=(1,2,3))
+    x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
+    s_all = s.abs().permute(0,2,3,1) 
+    name = ['bt', 'ble', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
+    for i in range(6):
+        plt.figure()
+        plt.imshow(s_all[0,:,:,i])
+        plt.colorbar()
+        plt.savefig(name[i]+'.eps')
+        plt.show()
+
 #%% plot rid140100 details
     "This code shows EM is boosted by a little bit noise"
     # res, _ = torch.load('../data/nem_ss/nem_res/res_nem_shat_hhat_snr5.pt') # s,h
