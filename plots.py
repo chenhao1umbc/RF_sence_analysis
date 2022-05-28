@@ -16,6 +16,11 @@ if True:
     x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
     s_all = s.abs().permute(0,2,3,1) 
     name = ['bt', 'ble', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
+
+    plt.imshow(x_all[0,:,:,0].abs())
+    d = x_all[0,:,:,0].abs()
+    sio.savemat('6mix.mat',{'d':x_all[0,:,:,0].abs().numpy()})
+
     for i in range(6):
         plt.figure()
         plt.imshow(s_all[0,:,:,i])
@@ -209,7 +214,7 @@ if True:
     plt.legend(['EM for s', 'NEM for s', 'EM for h', 'NEM for h'], prop={'size': 16})
     plt.savefig('6hs.eps', bbox_inches = 'tight')
 
-#%% 182340
+#%% 182340 3class NEM vs EM
     matplotlib.rc('font', size=16)
     plt.figure()
     plt.plot([0, 5, 10, 20, 'inf'], [0.7099, 0.8650, 0.9360, 0.9580, 0.9499 ], '-x')
@@ -246,11 +251,26 @@ if True:
     plt.legend(['EM for s', 'NEM for s', 'EM for h', 'NEM for h'], prop={'size': 16})
     plt.savefig('3hs.eps', bbox_inches = 'tight')
 
-#%% plot mixture
-    d, s, h = torch.load('/home/chenhao1/Hpython/data/nem_ss/test500M3FT100_xsh.pt')
-    h, N, F = torch.tensor(h), s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
-    ratio = d.abs().amax(dim=(1,2,3))
-    x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
-    
-    plt.imshow(x_all[0,...,0].abs())
-    plt.colorbar()
+#%% plot M=3, J=6
+    # s1 = [0.5638, 0.72987, 0.83231, 0.91837, 0.9276]  # gamma1, gamma2
+    # h1 = [0.9338, 0.94142, 0.96039, 0.96735, 0.9688]
+
+    s2 = [0.41318, 0.5558, 0.6504, 0.6893, 0.6852] # EM k=14
+    h2 = [0.8500, 0.8871, 0.9098, 0.8950, 0.8900]
+
+    s3 = [0.5298, 0.6540, 0.6700, 0.6774, 0.6767] # HCI, k=14
+    h3 = [0.8688, 0.9063, 0.9094, 0.9026, 0.9042]
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], s2, '--x')
+    plt.plot([0, 5, 10, 20, 'inf'], h2, '-o')
+
+    plt.plot([0, 5, 10, 20, 'inf'], s3, '--x')
+    plt.plot([0, 5, 10, 20, 'inf'], h3, '-o')
+
+    plt.ylabel('Corr.', fontsize=16)
+    plt.xlabel('SNR', fontsize=16)
+    plt.legend(['EM for s', \
+        'EM for h', 'NEM for s', 'NEM for h'], prop={'size': 16})
+    plt.title('M=3, J=6')
+    # plt.savefig('3hs.eps', bbox_inches = 'tight')
