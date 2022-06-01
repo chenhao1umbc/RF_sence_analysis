@@ -1,6 +1,6 @@
 """ Full assembly of the parts to form the complete network """
 
-import torch.nn.functional as F
+import torch.nn.functional as Func
 import torch.nn as nn
 from .unet_parts import *
 
@@ -459,7 +459,7 @@ class UNetHalf8to100_stack(nn.Module):
         x = self.inc(x)
         x = self.up1(x)
         x = self.up2(x)
-        x = F.max_pool2d(x, (2,1))
+        x = Func.max_pool2d(x, (2,1))
         x = self.up3(x)
         x = self.up4(x)
         x = self.reshape(x) 
@@ -506,7 +506,7 @@ class UNetHalf8to100_stack_256(nn.Module):
         x = self.inc(x)
         x = self.up1(x)
         x = self.up2(x)
-        x = F.max_pool2d(x, (2,1))
+        x = Func.max_pool2d(x, (2,1))
         x = self.up3(x)
         x = self.up4(x)
         x = self.reshape(x) 
