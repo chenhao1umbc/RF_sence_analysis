@@ -35,7 +35,7 @@ v2 = awgn(v2, snr=30, seed=2).abs().to(torch.cfloat)
 snr=0; n_data=int(1.1e4)
 delta = v0.mean()*10**(-snr/10)
 angs = (torch.rand(n_data,1)*20 +10)/180*np.pi  # signal aoa [10, 30]
-h = (1j*angs.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
+H = (1j*angs.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
 
 angs_n1 = (torch.rand(n_data,1)*20 -70)/180*np.pi  # noise aoa [-70, -50]
 hs_n1 = (1j*angs_n1.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
@@ -43,12 +43,13 @@ hs_n1 = (1j*angs_n1.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape
 angs_n2 = (torch.rand(n_data,1)*20 +120)/180*np.pi  # noise aoa [120, 140]
 hs_n2 = (1j*angs_n2.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
 
-signal = (h[..., None]@(torch.randn(v0.shape, dtype=torch.cfloat)*(v0**0.5)).flatten()[None,:]).reshape(n_data, M, 100, 100)
-# n1 = (hs_n1[..., None]@(torch.randn(v1.shape, dtype=torch.cfloat)*(v1**0.5)).flatten()[None,:]).reshape(n_data, M, 100, 100)
-n1 = hs_n1[...,None] @ torch.randn(1, torch.tensor(v0.shape).prod(), dtype=torch.cfloat)*delta**0.5 
-n2 = hs_n2[...,None] @ torch.randn(1, torch.tensor(v0.shape).prod(), dtype=torch.cfloat)*delta**0.5
-mix =  signal + n1.reshape(n_data, M, 100, 100) + n2.reshape(n_data, M, 100, 100)   
-mix_all, sig_all = mix.permute(0,2,3,1), signal.permute(0,2,3,1)
+signal = (H[..., None]@(torch.randn(v0.shape, dtype=torch.cfloat)*(v0**0.5)).flatten()[None,:])
+n1 = (hs_n1[..., None]@(torch.randn(v1.shape, dtype=torch.cfloat)*(v1**0.5)).flatten()[None,:])
+n2 = (hs_n2[..., None]@(torch.randn(v2.shape, dtype=torch.cfloat)*(v2**0.5)).flatten()[None,:])
+mix =  (signal + n1 + n2).reshape(n_data, M, 100, 100)   
+mix_all, sig_all = mix.permute(0,2,3,1), signal.reshape(n_data, M, 100, 100).permute(0,2,3,1)
+mixn = awgn_batch(mix_all)
+H_all = torch.stack((H, hs_n1, hs_n2), dim=-1)
 
 # torch.save((mix, sig, h), 'toy_matrix_inv.pt') # generate data is faster than loading it...
 plt.figure()
@@ -64,64 +65,93 @@ if False: # check data low rank or not
         if r != 3:
             print('low rank', i, 'rank is ', r)
 
+
 #%% load data and model
 class DOA(nn.Module):
     def __init__(self):
         super().__init__()
-        self.rx_net = nn.Sequential(
-            nn.Linear(18,128),
+        self.mainnet = nn.Sequential(
+            nn.Linear(12,128),
             nn.ReLU(inplace=True),
             nn.Linear(128,128),
             nn.ReLU(inplace=True),
-            # nn.Linear(128,128),
-            # nn.ReLU(inplace=True),
-            # nn.Linear(128,128),
-            # nn.ReLU(inplace=True),
-            nn.Linear(128,18),
+        )
+        self.hnet = nn.Sequential(
+            nn.Linear(128,64),
             nn.ReLU(inplace=True),
-            nn.Linear(18,18)
+            nn.Linear(64,6)
+        )
+        self.rxnet = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64, 32),
+            nn.ReLU(inplace=True),
+            nn.Linear(32, 12)
         )
     def forward(self, x):
-        rx_inv = self.rx_net(x)
+        m = self.mainnet(x)
+        h6 = self.hnet(m)
+        rx12 = self.rxnet(m)
 
-        return rx_inv 
+        return h6, rx12 
+
+def lower2matrix(rx12):
+    rx_inv_hat = torch.zeros(48, 3, 3, dtype=torch.cfloat).cuda()
+    rx_inv_hat[:, ind[0], ind[1]] = rx12[:, :6] + 1j*rx12[:,6:]
+    rx_inv_hat = rx_inv_hat + rx_inv_hat.permute(0,2,1).conj()
+    rx_inv_hat[0,0], rx_inv_hat[1,1], rx_inv_hat[2,2] = \
+        rx_inv_hat[0,0]/2, rx_inv_hat[1,1]/2, rx_inv_hat[2,2]/2
+
 model = DOA().cuda()
 
 #%%
-h_all, M = h, sig_all.shape[-1]
-n_tr = int(1e4)
+M, btsize, n_tr = 3, 48, int(1e2)
+lamb = 1
 const_range = torch.arange(M).to(torch.cfloat)[None,:].cuda()
-data = Data.TensorDataset(mix_all[:n_tr], sig_all[:n_tr], h_all[:n_tr])
-val0 = mix_all[n_tr:n_tr+200]
-rx_val = (val0[...,None] @ val0[:,:,:,None,:]).mean(dim=(1,2))
-rx_val_cuda = rx_val.cuda()
-inp_val = torch.stack((rx_val.real, rx_val.imag), dim=1).reshape(rx_val.shape[0], -1).cuda()
-tr = Data.DataLoader(data, batch_size=32, drop_last=True, shuffle=True)
+data = Data.TensorDataset(mix_all[:n_tr], H_all[:n_tr])
+tr = Data.DataLoader(data, batch_size=btsize, drop_last=True, shuffle=True)
 optimizer = RAdam(model.parameters(),
                 lr= 1e-4,
                 betas=(0.9, 0.999), 
                 eps=1e-8,
                 weight_decay=0)
-Is = torch.stack([torch.eye(3,3)]*32, dim=0).to(torch.cfloat).cuda()
+
+"Pre calc constants"
+Is = torch.stack([torch.eye(3,3)]*btsize, dim=0).to(torch.cfloat).cuda()
 Is2 = torch.stack([torch.eye(3,3)]*200, dim=0).to(torch.cfloat).cuda()
+ind = torch.tril_indices(3,3)
+indx = ind[0]*3+ind[1]
+
+"validation"
+val0, h0 = mix_all[n_tr:n_tr+200], H_all[n_tr:n_tr+200].cuda()
+rx_val = (val0[...,None] @ val0[:,:,:,None,:].conj()).mean(dim=(1,2))
+rx_val_cuda = rx_val.cuda()
+rl_val = rx_val.reshape(200, -1)[:,indx]
+inp_val = torch.stack((rx_val.real, rx_val.imag), dim=1).reshape(rx_val.shape[0], -1).cuda()
 
 loss_all, loss_val_all = [], []
 for epoch in range(701):
-    for i, (mix, sig, _) in enumerate(tr):
+    for i, (mix, H) in enumerate(tr):
+        loss = 0
         optimizer.zero_grad()
+        mix, H = mix.cuda(), H.cuda()
+        for j in range(3): # recursive for each source
+            if j == 0:
+                Rx = mix[...,None] @ mix[:,:,:,None,:].conj()
+                rx = Rx.mean(dim=(1,2))
+            else:
+                w = rx_inv_hat@hhat[...,None] / \
+                        (hhat[:,None,:].conj()@rx_inv_hat@hhat[...,None]).squeeze()
+                p = Is - hhat[...,None]@w.permute(0,2,1).conj()
+                rx = p@rx@p.permute(0,2,1).conj()
 
-        "prepare for input to the NN"
-        mix = mix.cuda()
-        sig = sig.cuda()
-        Rx = mix[...,None] @ mix[:,:,:,None,:]
-        rx = Rx.mean(dim=(1,2))
-        inp = torch.stack((rx.real, rx.imag), dim=1).reshape(mix.shape[0], -1)
-        rx_raw = model(inp)
-        rx_reshape = rx_raw.reshape(mix.shape[0],M,M,2)
-        rx_inv_hat = rx_reshape[...,0] + 1j*rx_reshape[...,1]
-
-        "Calc gradient and update"
-        loss = ((Is-rx_inv_hat@rx).abs()**2).mean()
+            rl = rx.reshape(48, -1)[:,indx] # take lower triangle
+            inp = torch.stack((rl.real, rl.imag), dim=1).reshape(btsize, -1)
+            h6, rx12 = model(inp)
+            hhat = h6[:,:3] + 1j*h6[:,3:]
+            rx_inv_hat = lower2matrix(rx12)
+            loss = loss + ((Is-rx_inv_hat@rx).abs()**2).mean() + \
+                lamb*((H[:,:,j]-hhat).abs()**2).mean()
         loss.backward()
         # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
         optimizer.step()
@@ -142,10 +172,28 @@ for epoch in range(701):
             plt.show()
 
         with torch.no_grad():
+            loss_val = 0
+            for j in range(3): # recursive for each source
+                if j ==0 :
+                    rx = rx_val_cuda
+                else:
+                    w = rx_inv_hat_val@hhat[...,None] / \
+                            (hhat[:,None,:].conj()@rx_inv_hat_val@hhat[...,None]).squeeze()
+                    p = Is - hhat[...,None]@w.permute(0,2,1).conj()
+                    rx = p@rx@p.permute(0,2,1).conj()
+
+                rl = rx.reshape(200, -1)[:,indx] # take lower triangle
+                inp = torch.stack((rl.real, rl.imag), dim=1).reshape(btsize, -1)
+                h6, rx12 = model(inp)
+                hhat = h6[:,:3] + 1j*h6[:,3:]
+                rx_inv_hat_val = lower2matrix(rx12)
+
+            loss_val = loss_val + ((Is2-rx_inv_hat_val@rx).abs()**2).mean() + \
+                lamb*((h0[:,:,j]-hhat).abs()**2).mean()
             rx_raw = model(inp_val)
             rx_reshape = rx_raw.reshape(inp_val.shape[0],M,M,2)
             rx_inv_hat = rx_reshape[...,0] + 1j*rx_reshape[...,1]
-            loss_val = ((Is2-rx_inv_hat@rx_val_cuda).abs()**2).mean()
+
             loss_val_all.append(loss_val.cpu().item())
             plt.figure()
             plt.plot(loss_val_all, '-x')
