@@ -17,7 +17,7 @@ else:
 torch.autograd.set_detect_anomaly(True)
 
 #%%
-M = 3
+M, n_data= 3, int(1.1e3)
 dicts = sio.loadmat('../data/nem_ss/v2.mat')
 v0 = dicts['v'][..., 0]
 v1 = dicts['v'][..., 1]
@@ -32,7 +32,7 @@ v1 = awgn(v1, snr=30, seed=1).abs().to(torch.cfloat)
 v2 = torch.tensor(resize(v2, (100, 100), preserve_range=True))
 v2 = awgn(v2, snr=30, seed=2).abs().to(torch.cfloat)
 
-snr=0; n_data=int(1.1e4)
+snr=0
 delta = v0.mean()*10**(-snr/10)
 angs = (torch.rand(n_data,1)*20 +10)/180*np.pi  # signal aoa [10, 30]
 H = (1j*angs.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
@@ -96,11 +96,12 @@ class DOA(nn.Module):
         return h6, rx12 
 
 def lower2matrix(rx12):
-    rx_inv_hat = torch.zeros(48, 3, 3, dtype=torch.cfloat).cuda()
+    rx_inv_hat = torch.zeros(rx12.shape[0], 3, 3, dtype=torch.cfloat).cuda()
     rx_inv_hat[:, ind[0], ind[1]] = rx12[:, :6] + 1j*rx12[:,6:]
     rx_inv_hat = rx_inv_hat + rx_inv_hat.permute(0,2,1).conj()
     rx_inv_hat[0,0], rx_inv_hat[1,1], rx_inv_hat[2,2] = \
         rx_inv_hat[0,0]/2, rx_inv_hat[1,1]/2, rx_inv_hat[2,2]/2
+    return rx_inv_hat
 
 model = DOA().cuda()
 
@@ -126,11 +127,9 @@ indx = ind[0]*3+ind[1]
 val0, h0 = mix_all[n_tr:n_tr+200], H_all[n_tr:n_tr+200].cuda()
 rx_val = (val0[...,None] @ val0[:,:,:,None,:].conj()).mean(dim=(1,2))
 rx_val_cuda = rx_val.cuda()
-rl_val = rx_val.reshape(200, -1)[:,indx]
-inp_val = torch.stack((rx_val.real, rx_val.imag), dim=1).reshape(rx_val.shape[0], -1).cuda()
 
 loss_all, loss_val_all = [], []
-for epoch in range(701):
+for epoch in range(3):
     for i, (mix, H) in enumerate(tr):
         loss = 0
         optimizer.zero_grad()
@@ -141,12 +140,11 @@ for epoch in range(701):
                 rx = Rx.mean(dim=(1,2))
             else:
                 w = rx_inv_hat@hhat[...,None] / \
-                        (hhat[:,None,:].conj()@rx_inv_hat@hhat[...,None]).squeeze()
+                        (hhat[:,None,:].conj()@rx_inv_hat@hhat[...,None])
                 p = Is - hhat[...,None]@w.permute(0,2,1).conj()
                 rx = p@rx@p.permute(0,2,1).conj()
 
-            rl = rx.reshape(48, -1)[:,indx] # take lower triangle
-            inp = torch.stack((rl.real, rl.imag), dim=1).reshape(btsize, -1)
+            inp = torch.stack((rx.real, rx.imag), dim=1)[:,:,ind[0], ind[1]].reshape(btsize, -1)
             h6, rx12 = model(inp)
             hhat = h6[:,:3] + 1j*h6[:,3:]
             rx_inv_hat = lower2matrix(rx12)
@@ -171,28 +169,26 @@ for epoch in range(701):
             plt.title(f'epoch {epoch}')
             plt.show()
 
+        "Validation"
         with torch.no_grad():
             loss_val = 0
             for j in range(3): # recursive for each source
                 if j ==0 :
                     rx = rx_val_cuda
                 else:
-                    w = rx_inv_hat_val@hhat[...,None] / \
-                            (hhat[:,None,:].conj()@rx_inv_hat_val@hhat[...,None]).squeeze()
-                    p = Is - hhat[...,None]@w.permute(0,2,1).conj()
+                    w = rx_inv_hat_val@hhat_val[...,None] / \
+                            (hhat_val[:,None,:].conj()@rx_inv_hat_val@hhat_val[...,None])
+                    p = Is2 - hhat_val[...,None]@w.permute(0,2,1).conj()
                     rx = p@rx@p.permute(0,2,1).conj()
 
                 rl = rx.reshape(200, -1)[:,indx] # take lower triangle
-                inp = torch.stack((rl.real, rl.imag), dim=1).reshape(btsize, -1)
+                inp = torch.stack((rl.real, rl.imag), dim=1).reshape(200, -1)
                 h6, rx12 = model(inp)
-                hhat = h6[:,:3] + 1j*h6[:,3:]
+                hhat_val = h6[:,:3] + 1j*h6[:,3:]
                 rx_inv_hat_val = lower2matrix(rx12)
 
             loss_val = loss_val + ((Is2-rx_inv_hat_val@rx).abs()**2).mean() + \
-                lamb*((h0[:,:,j]-hhat).abs()**2).mean()
-            rx_raw = model(inp_val)
-            rx_reshape = rx_raw.reshape(inp_val.shape[0],M,M,2)
-            rx_inv_hat = rx_reshape[...,0] + 1j*rx_reshape[...,1]
+                lamb*((h0[:,:,j]-hhat_val).abs()**2).mean()
 
             loss_val_all.append(loss_val.cpu().item())
             plt.figure()
