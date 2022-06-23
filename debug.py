@@ -1,7 +1,6 @@
-"For now, I need to verify that the covariance inverse works"
-#%% 
+#%%v4 
 from utils import *
-os.environ["CUDA_VISIBLE_DEVICES"]="3"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
 torch.set_printoptions(linewidth=160)
 from datetime import datetime
@@ -15,6 +14,17 @@ if torch.__version__[:5] != '1.8.1':
 else:
     RAdam = optim.RAdam
 torch.autograd.set_detect_anomaly(True)
+
+rid = 'v6'
+fig_loc = '../data/data_ss/figures/'
+mod_loc = '../data/data_ss/models/'
+if not(os.path.isdir(fig_loc + f'/{rid}/')): 
+    print('made a new folder')
+    os.mkdir(fig_loc + f'{rid}/')
+    os.mkdir(mod_loc + f'{rid}/')
+fig_loc = fig_loc + f'{rid}/'
+mod_loc = mod_loc + f'{rid}/'
+
 
 #%%
 M = 3
@@ -70,20 +80,18 @@ class DOA(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(128,128),
             nn.ReLU(inplace=True),
+            nn.Linear(128,128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128,128),
+            nn.ReLU(inplace=True),
             nn.Linear(128,18),
             nn.ReLU(inplace=True),
             nn.Linear(18,18)
         )
-        self.h_net = nn.Sequential(
-            nn.Linear(18, 128),
-            nn.ReLU(inplace=True),
-            nn.Linear(128, 1),
-            nn.Tanh()
-        )
     def forward(self, x):
         rx_inv = self.rx_net(x)
-        h = self.h_net(rx_inv)
-        return rx_inv, h
+
+        return rx_inv 
 model = DOA().cuda()
 
 #%%
@@ -91,48 +99,38 @@ h_all, M = h, sig_all.shape[-1]
 n_tr = int(1e4)
 const_range = torch.arange(M).to(torch.cfloat)[None,:].cuda()
 data = Data.TensorDataset(mix_all[:n_tr], sig_all[:n_tr], h_all[:n_tr])
+val0 = mix_all[n_tr:n_tr+200]
+rx_val = (val0[...,None] @ val0[:,:,:,None,:].conj()).mean(dim=(1,2))
+rx_val_cuda = rx_val.cuda()
+inp_val = torch.stack((rx_val.real, rx_val.imag), dim=1).reshape(rx_val.shape[0], -1).cuda()
 tr = Data.DataLoader(data, batch_size=32, drop_last=True, shuffle=True)
-optimizer = RAdam(model.parameters(),
-                lr= 1e-4,
-                betas=(0.9, 0.999), 
-                eps=1e-8,
-                weight_decay=0)
+
 Is = torch.stack([torch.eye(3,3)]*32, dim=0).to(torch.cfloat).cuda()
-loss_all = []
-for epoch in range(301):
-    for i, (mix, sig, h) in enumerate(tr):
-        optimizer.zero_grad()
+Is2 = torch.stack([torch.eye(3,3)]*200, dim=0).to(torch.cfloat).cuda()
 
-        "prepare for input to the NN"
-        mix = mix.cuda()
-        sig = sig.cuda()
-        Rx = mix[...,None] @ mix[:,:,:,None,:]
-        rx = Rx.mean(dim=(1,2))
-        inp = torch.stack((rx.real, rx.imag), dim=1).reshape(mix.shape[0], -1)
-        rx_raw, ang = model(inp)
+loss_all, loss_val_all = [], []
 
-        "prepare for loss function input"
-        hhat = (1j*ang.sin()@const_range).exp()
-        rx_reshape = rx_raw.reshape(mix.shape[0],M,M,2)
+for epoch in range(0, 2001, 20):
+    model = torch.load(mod_loc+f'model_epoch{epoch}.pt')
+    with torch.no_grad():
+        rx_raw = model(inp_val)
+        rx_reshape = rx_raw.reshape(inp_val.shape[0],M,M,2)
         rx_inv_hat = rx_reshape[...,0] + 1j*rx_reshape[...,1]
-        w = rx_inv_hat@hhat[..., None]
-        shat = w.permute(0,2,1).conj() @ mix[..., None].permute(1,2,0,3,4)
-        sighat = (shat@hhat[:,None,:]).squeeze().permute(2,0,1,3)
-
-        "Calc gradient and update"
-        loss = ((sig-sighat).abs()**2).mean() #+0.1*((Is-rx_inv_hat@rx)**2).mean()
-        loss.backward()
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
-        optimizer.step()
-        torch.cuda.empty_cache()
-        if i % 30 == 0:
-            loss_all.append(loss.detach().cpu().item())
-        
-    if epoch % 10 == 0:
+        rx_inv_hat = (rx_inv_hat + rx_inv_hat.conj().permute(0,2,1))/2
+        loss_val = ((Is2-rx_inv_hat@rx_val_cuda).abs()**2).mean()
+        loss_val_all.append(loss_val.cpu().item())
+        print('epoch', epoch, rx_inv_hat[:3]@rx_val_cuda[:3])
         plt.figure()
-        plt.plot(loss_all[-500:], '-x')
-        plt.title(f'epoch {epoch}')
+        plt.plot(loss_val_all, '-x')
+        plt.title(f'val loss at epoch {epoch}')
+        # plt.savefig(fig_loc + f'Epoch{epoch}_validation_loss')
+
+        plt.figure()
+        plt.plot(loss_val_all[-50:], '-rx')
+        plt.title(f'last 50 val loss epoch {epoch}')
+        # plt.savefig(fig_loc + f'last_50val_at_epoch{epoch}')
         plt.show()
+        plt.close('all')           
 
 print('done')
 

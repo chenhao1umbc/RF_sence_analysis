@@ -16,8 +16,19 @@ else:
     RAdam = optim.RAdam
 torch.autograd.set_detect_anomaly(True)
 
+rid = 'v10'
+fig_loc = '../data/data_ss/figures/'
+mod_loc = '../data/data_ss/models/'
+if not(os.path.isdir(fig_loc + f'/{rid}/')): 
+    print('made a new folder')
+    os.mkdir(fig_loc + f'{rid}/')
+    os.mkdir(mod_loc + f'{rid}/')
+fig_loc = fig_loc + f'{rid}/'
+mod_loc = mod_loc + f'{rid}/'
+
+
 #%%
-M, n_data= 3, int(1.1e3)
+M, n_data= 3, int(1.2e4)
 dicts = sio.loadmat('../data/nem_ss/v2.mat')
 v0 = dicts['v'][..., 0]
 v1 = dicts['v'][..., 1]
@@ -104,9 +115,11 @@ def lower2matrix(rx12):
     return rx_inv_hat
 
 model = DOA().cuda()
+for w in model.parameters():
+    nn.init.normal_(w, mean=0., std=0.01)
 
 #%%
-M, btsize, n_tr = 3, 48, int(1e2)
+M, btsize, n_tr = 3, 64, int(1e4)
 lamb = 1
 const_range = torch.arange(M).to(torch.cfloat)[None,:].cuda()
 data = Data.TensorDataset(mix_all[:n_tr], H_all[:n_tr])
@@ -129,7 +142,7 @@ rx_val = (val0[...,None] @ val0[:,:,:,None,:].conj()).mean(dim=(1,2))
 rx_val_cuda = rx_val.cuda()
 
 loss_all, loss_val_all = [], []
-for epoch in range(3):
+for epoch in range(2001):
     for i, (mix, H) in enumerate(tr):
         loss = 0
         optimizer.zero_grad()
@@ -151,7 +164,7 @@ for epoch in range(3):
             loss = loss + ((Is-rx_inv_hat@rx).abs()**2).mean() + \
                 lamb*((H[:,:,j]-hhat).abs()**2).mean()
         loss.backward()
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
         optimizer.step()
         torch.cuda.empty_cache()
         if i % 30 == 0:
@@ -187,15 +200,21 @@ for epoch in range(3):
                 hhat_val = h6[:,:3] + 1j*h6[:,3:]
                 rx_inv_hat_val = lower2matrix(rx12)
 
-            loss_val = loss_val + ((Is2-rx_inv_hat_val@rx).abs()**2).mean() + \
-                lamb*((h0[:,:,j]-hhat_val).abs()**2).mean()
+                loss_val = loss_val + ((Is2-rx_inv_hat_val@rx).abs()**2).mean() + \
+                    lamb*((h0[:,:,j]-hhat_val).abs()**2).mean()
 
             loss_val_all.append(loss_val.cpu().item())
             plt.figure()
             plt.plot(loss_val_all, '-x')
             plt.title(f'val loss at epoch {epoch}')
-            plt.show()
+            plt.savefig(fig_loc + f'Epoch{epoch}_validation_loss')
 
+            plt.figure()
+            plt.plot(loss_val_all[-50:], '-rx')
+            plt.title(f'last 50 val loss epoch {epoch}')
+            plt.savefig(fig_loc + f'last_50val_at_epoch{epoch}')
+            plt.close('all')   
+        torch.save(model, mod_loc+f'model_epoch{epoch}.pt')
 print('done')
 
 
