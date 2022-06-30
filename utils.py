@@ -205,7 +205,7 @@ def em_func(x, J=3, Hscale=1, Rbscale=100, max_iter=501, lamb=0, seed=0, show_pl
 
     return shat, Hhat, vhat, Rb
 
-def awgn(xx, snr=20, seed=None):
+def awgn(xx, snr=20, seed=0):
     """
     This function is adding white guassian noise to the given complex signal
     :param x: the given signal with shape of [N, F, Channel]
@@ -223,7 +223,7 @@ def awgn(xx, snr=20, seed=None):
     x = x + noise 
     return x
 
-def awgn_batch(xx, snr=30, seed=None):
+def awgn_batch(xx, snr=30, seed=0):
     """
     This function is adding white guassian noise to the given complex signal
     :param x: the given signal with shape of [I, N, F, J(Channel, M actually)]
