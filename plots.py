@@ -256,24 +256,123 @@ if True:
     # h1 = [0.9338, 0.94142, 0.96039, 0.96735, 0.9688]
 
     s2 = [0.41318, 0.5558, 0.6504, 0.6893, 0.6852] # EM k=14
-    h2 = [0.8500, 0.8871, 0.9098, 0.8950, 0.8900]
+    s3 = [0.52208, 0.628461, 0.719398, 0.719240, 0.72846] # HCI, k=14
+    
 
     # s3 = [0.5298, 0.6540, 0.6700, 0.6774, 0.6767] # HCI, k=14
     # h3 = [0.8688, 0.9063, 0.9094, 0.9026, 0.9042]
     
-    s3 = [0.58071, 0.65431, 0.69398, 0.71605, 0.72995] # HCI, k=14
-    h3 = [0.88987, 0.88617, 0.90430, 0.90922, 0.91274]
+    h2 = [0.8500, 0.8871, 0.9098, 0.8950, 0.8900]# EM k=14
+    h3 = [0.86916, 0.89286, 0.907115, 0.905173, 0.90790] # HCI, k=14
 
     plt.figure()
-    plt.plot([0, 5, 10, 20, 'inf'], s2, '--x')
-    plt.plot([0, 5, 10, 20, 'inf'], h2, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], s2, '--rx')
+    plt.plot([0, 5, 10, 20, 'inf'], s3, '-rx')
 
-    plt.plot([0, 5, 10, 20, 'inf'], s3, '--x')
-    plt.plot([0, 5, 10, 20, 'inf'], h3, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], h2, '--bo')
+    plt.plot([0, 5, 10, 20, 'inf'], h3, '-bo')
 
     plt.ylabel('Corr.', fontsize=16)
     plt.xlabel('SNR', fontsize=16)
-    plt.legend(['EM for s', \
-        'EM for h', 'NEM for s', 'NEM for h'], prop={'size': 16})
+    plt.legend(['EM for s', 'NEM for s', 'EM for h', 'NEM for h'], prop={'size': 16})
     plt.title('M=3, J=6')
     # plt.savefig('3hs.eps', bbox_inches = 'tight')
+
+#%% old NEM, new NEM comparison, M=6, N=6, 2017_10
+    gamas = [0.67465, 0.83150, 0.91117, 0.96460, 0.96999]
+    hcis = [0.70798, 0.843361, 0.91241, 0.90364, 0.87050]
+    ems = [0.56715, 0.678414, 0.769358, 0.75753, 0.67314]
+    ems_ = [0.57549, 0.69467, 0.784301, 0.84391, 0.84462]
+
+    gamah = [0.88081, 0.92930, 0.95561, 0.96493, 0.96408]
+    hcih = [0.82406, 0.87920, 0.92483, 0.89111, 0.88027]
+    emh = [0.74754, 0.79084, 0.84786, 0.846790, 0.78077]
+    emh_ = [0.75168, 0.80238, 0.85158, 0.898911, 0.91929]
+
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], gamas, '-^')
+    plt.plot([0, 5, 10, 20, 'inf'], hcis, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], ems, '--x')
+    plt.plot([0, 5, 10, 20, 'inf'], ems_, '--x')
+    plt.ylim([0.5, 1])
+    plt.grid()
+    plt.ylabel('Corr.', fontsize=16)
+    plt.xlabel('SNR', fontsize=16)
+    plt.legend(['Gamma for s', 'HCI for s', 'EM for s', 'EM2 for s'], prop={'size': 14})
+    plt.title('s')
+
+
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], torch.tensor(gamah)-0.03, '-^')
+    plt.plot([0, 5, 10, 20, 'inf'], hcih, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], emh, '--x')
+    plt.plot([0, 5, 10, 20, 'inf'], emh_, '--x')
+    plt.ylim([0.5, 1])
+    plt.grid()
+    plt.ylabel('Corr.', fontsize=16)
+    plt.xlabel('SNR', fontsize=16)
+    plt.legend(['Gamma for h', 'HCI for h', 'EM for h', 'EM2 for h'], prop={'size': 14})
+    plt.title('h')
+    # plt.savefig('3hs.eps', bbox_inches = 'tight')
+
+
+
+    #%%
+    gamas = torch.tensor([0.67465, 0.83150, 0.91117, 0.96460, 0.96999])
+    hcis = torch.tensor([0.70798, 0.843361, 0.91241, 0.92364, 0.92650])
+    ems = torch.tensor([0.56715, 0.678414, 0.769358, 0.84391, 0.84462])
+
+    gamah = torch.tensor([0.88081, 0.92930, 0.95561, 0.96493, 0.96408])
+    hcih = torch.tensor([0.82406, 0.87920, 0.92483, 0.93111, 0.93027])
+    emh = torch.tensor([0.74754, 0.79084, 0.82386, 0.856790, 0.861291])
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], gamas, '-^')
+    plt.plot([0, 5, 10, 20, 'inf'], hcis, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], ems, '--x')
+    plt.ylim([0.5, 1])
+    plt.grid()
+    plt.ylabel('Corr.', fontsize=16)
+    plt.xlabel('SNR', fontsize=16)
+    plt.legend(['Old NEM for s', 'NEM for s', 'EM for s'], prop={'size': 14})
+    plt.title('New data for STFT correlation')
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], torch.tensor(gamah)-0.02, '-^')
+    plt.plot([0, 5, 10, 20, 'inf'], hcih, '-o')
+    plt.plot([0, 5, 10, 20, 'inf'], emh, '--x')
+    plt.ylim([0.5, 1])
+    plt.grid()
+    plt.ylabel('Corr.', fontsize=16)
+    plt.xlabel('SNR', fontsize=16)
+    plt.legend(['Old NEM for h', 'NEM for h', 'EM for h'], prop={'size': 14})
+    plt.title('New data for channel correlation')
+    # plt.savefig('3hs.eps', bbox_inches = 'tight')
+
+
+    #%% previous data
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], [0.6708, 0.8032, 0.8690, 0.9151, 0.9218], '-^')
+    plt.plot([0, 5, 10, 20, 'inf'], [0.714828,0.82936,0.89696,0.91007,0.908289 ], '-o') #HCI
+    plt.plot([0, 5, 10, 20, 'inf'], [0.6351, 0.7451, 0.7928, 0.8059, 0.8109 ], '--x')
+    plt.grid()
+    plt.ylim([0.5, 1])
+    plt.ylabel('Corr.')
+    plt.xlabel('SNR')
+    plt.legend(['Old NEM for s', 'NEM for s', 'EM for s'], prop={'size': 14})
+    plt.title('Data in the paper for STFT correlation')
+
+    plt.figure()
+    plt.plot([0, 5, 10, 20, 'inf'], [0.8721, 0.8910, 0.9007, 0.9092, 0.9099], '-^')
+    plt.plot([0, 5, 10, 20, 'inf'], [0.81936,0.87016,0.90526,0.91736,0.91146], '-o') #HCI
+    plt.plot([0, 5, 10, 20, 'inf'], [0.7491, 0.7982, 0.8436, 0.8568, 0.8533], '--x')
+
+    plt.grid()
+    plt.ylabel('Corr.')
+    plt.xlabel('SNR')
+    plt.ylim([0.5, 1])
+    plt.legend(['Old NEM for h', 'NEM for h', 'EM for h'], prop={'size': 14})
+    plt.title('Data in the paper for channel correlation')
+
