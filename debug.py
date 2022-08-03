@@ -1,4 +1,5 @@
-#%%v4 
+#%% s22_
+rid = 's22_' # running id
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -7,15 +8,6 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
-if torch.__version__[:5] != '1.8.1':
-    def mydet(x):
-        return x.det()
-    RAdam = torch.optim.RAdam
-else:
-    RAdam = optim.RAdam
-torch.autograd.set_detect_anomaly(True)
-
-rid = 'v6'
 fig_loc = '../data/data_ss/figures/'
 mod_loc = '../data/data_ss/models/'
 if not(os.path.isdir(fig_loc + f'/{rid}/')): 
@@ -25,113 +17,236 @@ if not(os.path.isdir(fig_loc + f'/{rid}/')):
 fig_loc = fig_loc + f'{rid}/'
 mod_loc = mod_loc + f'{rid}/'
 
+if torch.__version__[:5] != '1.8.1':
+    def mydet(x):
+        return x.det()
+    RAdam = torch.optim.RAdam
+else:
+    RAdam = optim.RAdam
 
-#%%
-M = 3
-dicts = sio.loadmat('../data/nem_ss/v2.mat')
-v0 = dicts['v'][..., 0]
-v1 = dicts['v'][..., 1]
-from skimage.transform import resize
-v0 = torch.tensor(resize(v0, (100, 100), preserve_range=True))
-v0 = awgn(v0, snr=30, seed=0).abs().to(torch.cfloat)
-plt.imshow(v0.abs())
-plt.colorbar()
-v1 = torch.tensor(resize(v1, (100, 100), preserve_range=True))
-v1 = awgn(v1, snr=30, seed=0).abs().to(torch.cfloat)
-
-snr=0; n_data=int(1.1e4)
-delta = v0.mean()*10**(-snr/10)
-angs = (torch.rand(n_data,1)*20 +10)/180*np.pi  # signal aoa [10, 30]
-h = (1j*angs.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
-
-angs_n1 = (torch.rand(n_data,1)*20 -70)/180*np.pi  # noise aoa [-70, -50]
-hs_n1 = (1j*angs_n1.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
-
-angs_n2 = (torch.rand(n_data,1)*20 +120)/180*np.pi  # noise aoa [120, 140]
-hs_n2 = (1j*angs_n2.sin()@torch.arange(M).to(torch.cfloat)[None,:]).exp() #shape of [n,M]
-
-signal = (h[..., None]@(torch.randn(v0.shape, dtype=torch.cfloat)*(v0**0.5)).flatten()[None,:]).reshape(n_data, M, 100, 100)
-# n1 = (hs_n1[..., None]@(torch.randn(v1.shape, dtype=torch.cfloat)*(v1**0.5)).flatten()[None,:]).reshape(n_data, M, 100, 100)
-n1 = hs_n1[...,None] @ torch.randn(1, torch.tensor(v0.shape).prod(), dtype=torch.cfloat)*delta**0.5 
-n2 = hs_n2[...,None] @ torch.randn(1, torch.tensor(v0.shape).prod(), dtype=torch.cfloat)*delta**0.5
-mix =  signal + n1.reshape(n_data, M, 100, 100) + n2.reshape(n_data, M, 100, 100)   
-mix_all, sig_all = mix.permute(0,2,3,1), signal.permute(0,2,3,1)
-
-# torch.save((mix, sig, h), 'toy_matrix_inv.pt') # generate data is faster than loading it...
-plt.figure()
-plt.imshow(mix_all[0,:,:,0].abs())
-plt.colorbar()
-
-if False: # check data low rank or not
-    for i in range(n_data):
-        x = mix[i,:,:].reshape(10000, 3)
-        xbar = x - x.mean(0)
-        cov = x.conj().t() @ x
-        r = torch.linalg.matrix_rank(cov)
-        if r != 3:
-            print('low rank', i, 'rank is ', r)
-
-#%% load data and model
-class DOA(nn.Module):
-    def __init__(self):
+torch.autograd.set_detect_anomaly(True)
+from vae_model import *
+class NN_s0(nn.Module):
+    """This is recursive Wiener filter version, with Rb threshold of [1e-3, 1e2]
+    Input shape [I,M,N,F], e.g.[32,3,100,100]
+    J <=K
+    """
+    def __init__(self, M=3, K=3, im_size=100):
         super().__init__()
-        self.rx_net = nn.Sequential(
+        self.dz = 32
+        self.J, self.M = K, M
+        self.mainnet = nn.Sequential(
             nn.Linear(18,128),
             nn.ReLU(inplace=True),
             nn.Linear(128,128),
             nn.ReLU(inplace=True),
-            nn.Linear(128,128),
-            nn.ReLU(inplace=True),
-            nn.Linear(128,128),
-            nn.ReLU(inplace=True),
-            nn.Linear(128,18),
-            nn.ReLU(inplace=True),
-            nn.Linear(18,18)
         )
-    def forward(self, x):
-        rx_inv = self.rx_net(x)
+        self.hnet1 = nn.Sequential(
+            nn.Linear(128,128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128,64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64,1)
+        )
+        self.hnet2 = nn.Sequential(
+            nn.Linear(128,128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128,64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64,1)
+        )
+        self.hnet3 = nn.Sequential(
+            nn.Linear(128,128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128,64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64,1)
+        )
 
-        return rx_inv 
-model = DOA().cuda()
+        self.encoder = nn.Sequential(
+            Down(in_channels=1, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            Down(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=1),
+            )
+        self.fc1 = nn.Linear(25*25, 2*self.dz)
+        self.decoder = nn.Sequential(
+            nn.Linear(self.dz, 25*25),
+            Reshape(-1, 1, 25, 25),
+            Up_(in_channels=1, out_channels=64),
+            DoubleConv(in_channels=64, out_channels=32),
+            Up_(in_channels=32, out_channels=16),
+            DoubleConv(in_channels=16, out_channels=4),
+            OutConv(in_channels=4, out_channels=1),
+            ) 
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def forward(self, x):
+        batch_size, _, N, F = x.shape
+        z_all, v_all = [], []
+        I = x.shape[0]
+        x0 = x.permute(0,2,3,1)[...,None]
+        Rx = x0 @ x.permute(0,2,3,1).conj()[...,None,:]
+        Rx = Rx.mean(dim=(1,2)) # shape of [I,M,M]
+        rx_inv = Rx.inverse()
+        temp = self.mainnet(torch.stack((Rx.real, Rx.imag), dim=1).reshape(I,-1))
+        ang = torch.stack((self.hnet1(temp), self.hnet2(temp), self.hnet3(temp)), dim=2)
+        ch = np.pi*torch.arange(self.M, device=ang.device)
+        Hhat = ((ch[:,None] @ ang).tanh()*1j).exp()
+
+        b = x0
+        for i in range(self.J):
+            hhat = Hhat[:,:,i]
+            w = rx_inv@hhat[...,None] / \
+                    (hhat[:,None,:].conj()@rx_inv@hhat[...,None])
+            shat = w.permute(0,2,1).conj()[:,None,None]@x0
+            b = b - shat*hhat[:, None,None,:,None]
+        
+            "Encoder"
+            xx = self.encoder(shat.squeeze()[:,None].abs())
+            "Get latent variable"
+            zz = self.fc1(xx.reshape(batch_size,-1))
+            mu = zz[:,::2]
+            logvar = zz[:,1::2]
+            z = self.reparameterize(mu, logvar)
+            z_all.append(z)
+            
+            "Decoder to get V"
+            v = self.decoder(z).abs()
+            v_all.append(threshold(v, floor=1e-3, ceiling=1e2)) # 1e-3 to 1e2
+        Rb = (b@b.conj().permute(0,1,2,4,3)).mean(dim=(1,2)).squeeze()
+        # Hhat = torch.stack(h_all, 2) # shape:[I, M, K]
+        vhat = torch.stack(v_all, 4).squeeze().to(torch.cfloat) # shape:[I, N, F, K]
+
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar
+
+def loss_fun(x, Rs, Hhat, Rb, mu, logvar, beta=1e-3):
+    x = x.permute(0,2,3,1)
+    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    Rxperm = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb
+    Rx = Rxperm.permute(2,0,1,3,4) # shape of [I, N, F, M, M]
+    rx = (x[...,None]@x[...,None,:].conj()).mean(dim=(1,2))
+    rx_inv = rx.inverse()
+
+    y = 0
+    for i in range(3):
+        hhat = Hhat[...,i]
+        w = rx_inv@hhat[...,None] / \
+                (hhat[:,None,:].conj()@rx_inv@hhat[...,None])
+        y += (w.permute(0,2,1).conj()[:,None,None]@x[...,None]) * hhat[:,None,None,:,None]
+    term3 = ((y.squeeze() - x).abs()**2).mean()
+    try:
+        ll = -(np.pi*mydet(Rx)).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze() 
+    except:
+        torch.save((x, Rx, Rs, Hhat, Rb), f'rid{rid}x_Rx_Rs_Hhat_Rb.pt')
+        print('error happpened, data saved and stop')
+        ll = -(np.pi*mydet(Rx)).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
+    return -ll.mean().real, beta*kl + 0.1*term3
+
+#%% load data
+I = 90 # how many samples
+M, N, F, J = 3, 100, 100, 3
+NF = N*F
+eps = 5e-4
+opts = {}
+opts['batch_size'] = 64
+opts['lr'] = 1e-3
+opts['n_epochs'] = 1001
+
+d = torch.load('../data/nem_ss/tr9kM3FT100_ang6915-30.pt')
+d = awgn_batch(d, snr=30, seed=1)
+xtr = (d/d.abs().amax(dim=(1,2,3), keepdim=True)) # [sample,M,N,F]
+xtr = xtr.to(torch.cfloat)
+data = Data.TensorDataset(xtr[:I])
+tr = Data.DataLoader(data, batch_size=opts['batch_size'], shuffle=True, drop_last=True)
+xval, _ , hgt0 = torch.load('../data/nem_ss/val500M3FT100_xsh_ang6915-30.pt')
+hgt = torch.tensor(hgt0).to(torch.cfloat).cuda()
+xval = xval/xval.abs().amax(dim=(1,2,3), keepdim=True)
+xval_cuda = xval[:128].to(torch.cfloat).cuda()
 
 #%%
-h_all, M = h, sig_all.shape[-1]
-n_tr = int(1e4)
-const_range = torch.arange(M).to(torch.cfloat)[None,:].cuda()
-data = Data.TensorDataset(mix_all[:n_tr], sig_all[:n_tr], h_all[:n_tr])
-val0 = mix_all[n_tr:n_tr+200]
-rx_val = (val0[...,None] @ val0[:,:,:,None,:].conj()).mean(dim=(1,2))
-rx_val_cuda = rx_val.cuda()
-inp_val = torch.stack((rx_val.real, rx_val.imag), dim=1).reshape(rx_val.shape[0], -1).cuda()
-tr = Data.DataLoader(data, batch_size=32, drop_last=True, shuffle=True)
+loss_iter, loss_tr, loss1, loss2, loss_eval = [], [], [], [], []
+NN = NN_s0
+model = NN(M,J,N).cuda()
+for w in model.parameters():
+    nn.init.normal_(w, mean=0., std=0.01)
 
-Is = torch.stack([torch.eye(3,3)]*32, dim=0).to(torch.cfloat).cuda()
-Is2 = torch.stack([torch.eye(3,3)]*200, dim=0).to(torch.cfloat).cuda()
+optimizer = RAdam(model.parameters(),
+                lr= opts['lr'],
+                betas=(0.9, 0.999), 
+                eps=1e-8,
+                weight_decay=0)
 
-loss_all, loss_val_all = [], []
+for epoch in range(opts['n_epochs']):
+    model.train()
+    for i, (x,) in enumerate(tr): 
+        x = x.cuda()
+        optimizer.zero_grad()         
+        Rs, Hhat, Rb, mu, logvar= model(x)
+        l1, l2 = loss_fun(x, Rs, Hhat, Rb, mu, logvar)
+        loss = l1 + l2
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
+        optimizer.step()
+        torch.cuda.empty_cache()
 
-for epoch in range(0, 2001, 20):
-    model = torch.load(mod_loc+f'model_epoch{epoch}.pt')
-    with torch.no_grad():
-        rx_raw = model(inp_val)
-        rx_reshape = rx_raw.reshape(inp_val.shape[0],M,M,2)
-        rx_inv_hat = rx_reshape[...,0] + 1j*rx_reshape[...,1]
-        rx_inv_hat = (rx_inv_hat + rx_inv_hat.conj().permute(0,2,1))/2
-        loss_val = ((Is2-rx_inv_hat@rx_val_cuda).abs()**2).mean()
-        loss_val_all.append(loss_val.cpu().item())
-        print('epoch', epoch, rx_inv_hat[:3]@rx_val_cuda[:3])
+    loss_tr.append(loss.detach().cpu().item()/opts['batch_size'])
+    loss1.append(l1.detach().cpu().item()/opts['batch_size'])
+    loss2.append(l2.detach().cpu().item()/opts['batch_size'])
+    if epoch%10 == 0:
+        print(epoch)
         plt.figure()
-        plt.plot(loss_val_all, '-x')
-        plt.title(f'val loss at epoch {epoch}')
-        # plt.savefig(fig_loc + f'Epoch{epoch}_validation_loss')
+        plt.plot(loss_tr, '-or')
+        plt.title(f'Loss fuction at epoch{epoch}')
+        plt.savefig(fig_loc + f'Epoch{epoch}_LossFunAll')
 
         plt.figure()
-        plt.plot(loss_val_all[-50:], '-rx')
-        plt.title(f'last 50 val loss epoch {epoch}')
-        # plt.savefig(fig_loc + f'last_50val_at_epoch{epoch}')
-        plt.show()
-        plt.close('all')           
+        plt.plot(loss1, '-og')
+        plt.title(f'Reconstruction loss at epoch{epoch}')
+        plt.savefig(fig_loc + f'Epoch{epoch}_Loss1')
 
+        plt.figure()
+        plt.plot(loss2, '-og')
+        plt.title(f'KL loss at epoch{epoch}')
+        plt.savefig(fig_loc + f'Epoch{epoch}_Loss2')
+
+        plt.figure()
+        plt.plot(loss_tr[-50:], '-or')
+        plt.title(f'Last 50 of loss at epoch{epoch}')
+        plt.savefig(fig_loc + f'Epoch{epoch}_last50')
+
+        model.eval()
+        with torch.no_grad():
+            Rs, Hhat, Rb, mu, logvar= model(xval_cuda)
+            l1, l2 = loss_fun(xval_cuda, Rs, Hhat, Rb, mu, logvar)
+            loss_eval.append((l1+l2).cpu().item()/128)
+            plt.figure()
+            plt.plot(loss_eval[-50:], '-xb')
+            plt.title(f'last 50 validation loss at epoch{epoch}')
+            plt.savefig(fig_loc + f'Epoch{epoch}_val') 
+            plt.close('all')           
+
+            hh = Hhat[0].detach()
+            rs0 = Rs[0].detach() 
+            Rx = hh @ rs0 @ hh.conj().t() + Rb.detach()[0]
+            shat = (rs0 @ hh.conj().t() @ Rx.inverse()@xval_cuda.permute(0,2,3,1)[0,:,:,:, None]).cpu() 
+            for ii in range(J):
+                plt.figure()
+                plt.imshow(shat[:,:,ii,0].abs())
+                plt.title(f'Epoch{epoch}_estimated sources-{ii}')
+                plt.savefig(fig_loc + f'Epoch{epoch}_estimated sources-{ii}')
+                plt.show()
+
+                # plt.figure()
+                # plt.imshow(rs0[:,:,ii, ii].abs().cpu())
+                # plt.title(f'Epoch{epoch}_estimated V-{ii}')
+                # plt.savefig(fig_loc + f'Epoch{epoch}_estimated V-{ii}')
+                # plt.show()
+                plt.close('all')
+            print('h_corr', h_corr(hh, hgt[0]))
+        torch.save(model, mod_loc+f'model_epoch{epoch}.pt')
 print('done')
-
-
