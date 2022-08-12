@@ -167,7 +167,7 @@ class FC_layer_g(nn.Module):
         )
     def forward(self, x):
         temp = self.layer(x)
-        out = self.layer2(temp[:,None]) #[I,1,n_feat]
+        out = self.layer2(temp[:,None]).squeeze() #[I, n_feat]
         return out
 
 
