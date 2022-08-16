@@ -11,31 +11,9 @@ if True:
 
 ################################################ data #########################################
 
-#%% toy data generation and run EM 
-    v = torch.Tensor(sio.loadmat('../data/nem_ss/v.mat')['v'])
-    N,F,J = v.shape
-    M = 6
-    max_iter = 200
-    rseed = 1
-    nvar = 1e-6
-
-    torch.manual_seed(1)
-    theta = torch.tensor([15, 75, -75])*np.pi/180  #len=J, signal AOAs  
-    h = ((-1j*np.pi*torch.arange(0, M))[:,None]@ torch.sin(theta).to(torch.complex128)[None, :]).exp()  # shape of [M, J]
-    s = torch.zeros((N,F,J), dtype=torch.complex128)
-    c = torch.zeros((M,N,F,J), dtype=torch.complex128)
-
-    for j in range(1, J):
-        s[:,:,j] = (torch.randn(N,F)+1j*torch.randn(N,F))/2**0.5*v[:,:,j]**0.5
-        for m in range(1,M):
-            c[m,:,:,j] = h[m,j]*s[:,:,j]
-    x = c.sum(3) + (torch.randn(M,N,F)+1j*torch.randn(M,N,F))/2**0.5*nvar**0.5
-    x = x.permute(1,2,0)/x.abs().max()
-    shat, Hhat, vhat, Rb = em_func(x, J=6, show_plot=True)
-
-#%% Prepare real data 3-classes mixture
+#%% Prepare real data 3-classes mixture, 3k for tr, 500 val, 500 test
     "raw data processing"
-    FT = 128
+    FT = 128  # 64, 80, 100, 128, 200, 256
     var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
     data = {}
     for i in range(6):
@@ -257,125 +235,7 @@ if True:
     s = torch.tensor(np.stack((s[i] for i in range(J)), axis=1))  #[I, J, F, T]
     torch.save((x[3500:], s, h), f'test500M{M}FT{FT}_xsh.pt')
 
-#%% generate g from validation data for classification
-    from utils import *
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
-    plt.rcParams['figure.dpi'] = 100
-    torch.set_printoptions(linewidth=160)
-    torch.set_default_dtype(torch.double)
-    import itertools
-    from datetime import datetime
-    print('starting date time ', datetime.now())
-    torch.manual_seed(1)
-
-    I, J, bs = 130, 6, 32 # I should be larger than bs
-    d, s, h = torch.load('../data/nem_ss/val500M6FT100_xsh.pt')
-    s_all, h = s.abs().permute(0,2,3,1), torch.tensor(h)
-    ratio = d.abs().amax(dim=(1,2,3))/3
-    xte = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]*3).permute(0,2,3,1)# [sample, N, F, channel]
-    xte = awgn_batch(xte[:I], snr=1000)
-    data = Data.TensorDataset(xte)
-    data_val = Data.DataLoader(data, batch_size=bs, drop_last=True)
-
-    from skimage.transform import resize
-    gte = torch.tensor(resize(xte[...,0].abs(), [I,8,8], order=1, preserve_range=True ))
-    gte = gte[:I]/gte[:I].amax(dim=[1,2])[...,None,None]  #standardization 
-    gte = torch.cat([gte[:,None] for j in range(J)], dim=1)[:,:,None] # shape of [I_val,J,1,8,8]
-    l = torch.load('../data/nem_ss/lb_c6_J188.pt')
-    lb = l.repeat(bs, 1, 1, 1, 1).cuda()
-
-    def nem_val_gtr(data, ginit, model, lb, bs, seed=1):
-        torch.manual_seed(seed) 
-        for param in model.parameters():
-            param.requires_grad_(False)
-        model.eval()
-
-        EM_iters = 501
-        M, N, F, J = 6, 100, 100, 6
-        NF, I = N*F, ginit.shape[0]
-
-        vtr = torch.randn(N, F, J).abs().to(torch.cdouble).repeat(I, 1, 1, 1)
-        Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
-        Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*100
-
-        lv, s, h, v, ll_all, g_all = ([] for i in range(6)) 
-        for i, (x,) in enumerate(data): # gamma [n_batch, 4, 4]
-            #%% EM part
-            vhat = vtr[i*bs:(i+1)*bs].cuda()        
-            Rb = Rbtr[i*bs:(i+1)*bs].cuda()
-            g = ginit[i*bs:(i+1)*bs].cuda().requires_grad_()
-
-            x = x.cuda()
-            optim_gamma = torch.optim.SGD([g], lr=0.001)
-            Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((1,2))/NF
-            Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
-            Rx = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb # shape of [N,F,I,M,M]
-            ll_traj = []
-
-            for ii in range(EM_iters):
-                "E-step"
-                W = Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() @ Rx.inverse()  # shape of [N, F, I, J, M]
-                shat = W.permute(2,0,1,3,4) @ x[...,None]
-                Rsshatnf = shat @ shat.transpose(-1,-2).conj() + Rs - (W@Hhat@Rs.permute(1,2,0,3,4)).permute(2,0,1,3,4)
-                Rsshat = Rsshatnf.sum([1,2])/NF # shape of [I, J, J]
-                Rxshat = (x[..., None] @ shat.transpose(-1,-2).conj()).sum((1,2))/NF # shape of [I, M, J]
-
-                "M-step"
-                Hhat = Rxshat @ Rsshat.inverse() # shape of [I, M, J]
-                # Hhat = (Rxshat @ Rsshat.inverse()).mean(0) # shape of [M, J]
-                Rb = Rxxhat - Hhat@Rxshat.transpose(-1,-2).conj() - \
-                    Rxshat@Hhat.transpose(-1,-2).conj() + Hhat@Rsshat@Hhat.transpose(-1,-2).conj()
-                Rb = Rb.diagonal(dim1=-1, dim2=-2).diag_embed()
-                Rb.imag = Rb.imag - Rb.imag
-
-                # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
-                # vj.imag = vj.imag - vj.imag
-                outs = []
-                for j in range(J):
-                    outs.append(model(torch.cat((g[:,j], lb[:,j]), dim=1)))
-                out = torch.cat(outs, dim=1).permute(0,2,3,1)
-                vhat.real = threshold(out)
-                loss = loss_func(vhat, Rsshatnf.cuda())
-                optim_gamma.zero_grad()   
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_([g], max_norm=1)
-                optim_gamma.step()
-                torch.cuda.empty_cache()
-                
-                "compute log-likelyhood"
-                vhat = vhat.detach()
-                Rs = vhat.diag_embed() # shape of [I, N, F, J, J]
-                Rxperm = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb 
-                Rx = Rxperm.permute(2,0,1,3,4) # shape of [I, N, F, M, M]
-                l = -(np.pi*mydet(Rx)).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze()
-                ll = l.sum().real
-                Rx = Rxperm
-
-                ll_traj.append(ll.item())
-                if torch.isnan(torch.tensor(ll_traj[-1])) : input('nan happened')
-                if ii > 20 and abs((ll_traj[ii] - ll_traj[ii-3])/ll_traj[ii-3]) <5e-4:
-                    print(f'EM early stop at iter {ii}')
-                    break
-            ll_all.append(l.sum((-1, -2)).cpu().real)
-            lv.append(ll.item())
-            s.append(shat)
-            h.append(Hhat)
-            v.append(vhat)
-            g_all.append(g.detach())
-            print(f'batch {i} is done')
-        return g_all, torch.cat(ll_all), (s, h, v)
-
-    rid = 160001
-    model = torch.load(f'../data/nem_ss/models/rid{rid}/model_rid{rid}_41.pt')
-    gval, l_all, shv = nem_val_gtr(data_val, gte, model, lb, bs, seed=1)
-    print('End date time ', datetime.now())
-
-    shat, hhat, vhat = shv
-    shat_all, hhat_all, g_all = torch.cat(shat).cpu(), torch.cat(hhat).cpu(), torch.cat(gval).cpu()
-    torch.save(g_all , 'g_all.pt')
-    print('done with g_all')
-
-#%% Prepare real data 3classes 9ktr, 60,15,-30 ,with range of |3|
+#%% Prepare real data 3classes 9ktr, with rangdom AOA, 500 val, 500 te
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
     plt.rcParams['figure.dpi'] = 150
@@ -386,7 +246,7 @@ if True:
     import time
 
     "raw data processing"
-    FT = 100
+    FT = 64  # 64, 80, 100, 128, 200, 256
     var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
     data = {}
     for i in range(6):
@@ -402,9 +262,9 @@ if True:
     d,hall = [],[]
     for i in range(5):
         np.random.seed(i)
-        theta1 = np.random.rand(2000, 1)*6 + 60 # 60+-3
-        theta2 = np.random.rand(2000, 1)*6 + 15 # 6+-3
-        theta3 = np.random.rand(2000, 1)*6 -30 # 65+-3
+        theta1 = np.random.rand(2000, 1)*180 + 0 # 0-180
+        theta2 = np.random.rand(2000, 1)*180 + 0 # 0-180
+        theta3 = np.random.rand(2000, 1)*180 - 0 # 0-180
         thetas = np.stack([theta1, theta2, theta3], axis=2)  #shape of [6000,1,3]
         h0 = np.exp(-1j*np.pi*np.arange(0, 3)[:,None]@np.sin(thetas))  #[I, M, J]
         np.random.shuffle(data[0])
@@ -421,7 +281,7 @@ if True:
     plt.figure()
     plt.imshow(x[0,0].abs().log(), aspect='auto', interpolation='None')
     plt.title('One example of 3-component mixture')
-    torch.save(x[:9000], f'tr9kM3FT{FT}_ang6915-30.pt')
+    torch.save(x[:9000], f'tr9kM3FT{FT}_data0.pt')
 
     "get s and h for the val and test data"
     *_, Z = stft(data[0][1000:1500], fs=4e7, nperseg=FT, boundary=None)
@@ -431,7 +291,7 @@ if True:
     *_, Z = stft(data[5][1000:1500], fs=4e7, nperseg=FT, boundary=None)
     s3 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
     s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
-    torch.save((x[9000:9500], s, h[9000:9500]), f'val500M3FT{FT}_xsh_ang6915-30.pt')
+    torch.save((x[9000:9500], s, h[9000:9500]), f'val500M3FT{FT}_xsh_data0.pt')
 
     *_, Z = stft(data[0][1500:], fs=4e7, nperseg=FT, boundary=None)
     s1 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
@@ -440,7 +300,7 @@ if True:
     *_, Z = stft(data[5][1500:], fs=4e7, nperseg=FT, boundary=None)
     s3 = np.roll(Z, FT//2, axis=1)  # roll nperseg//2
     s = torch.tensor(np.stack((s1, s2, s3), axis=1))  #[I, J, F, T]
-    torch.save((x[9500:], s, h[9000:3500]), f'test500M3FT{FT}_xsh_ang6915-30.pt')
+    torch.save((x[9500:], s, h[9000:3500]), f'test500M3FT{FT}_xsh_data0.pt')
     print('done')
 
 ############################################## Testing ########################################
