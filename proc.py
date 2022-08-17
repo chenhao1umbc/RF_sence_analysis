@@ -1,7 +1,7 @@
 #%%
 import matplotlib.pyplot as plt
 plt.rcParams['figure.dpi'] = 150
-for name in ['v78', 'v78c', 'v79', 'v79c', 'v80', 'v81', 'v82', 'v82a', 'v83']:
+for name in ['s35','3']:
     hall, sall = [], []
     file1 = open(name+'.out', 'r')
     lines = file1.readlines()
