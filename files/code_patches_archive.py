@@ -278,6 +278,7 @@ if True:
     data_pool = np.concatenate(d, axis=0)  #[I,M,time_len]
     *_, Z = stft(data_pool, fs=4e7, nperseg=FT, boundary=None)
     x = torch.tensor(np.roll(Z, FT//2, axis=2))  # roll nperseg//2
+    x = awgn_batch(x, snr=40, seed=1) # added white noise
     plt.figure()
     plt.imshow(x[0,0].abs().log(), aspect='auto', interpolation='None')
     plt.title('One example of 3-component mixture')
