@@ -264,7 +264,7 @@ class EM:
 
         return vhat, Hhat, Rb, Rj
 
-    def em_func_(self, x, J=3, max_iter=501, lamb=0, init=1):
+    def em_func_(self, x, J=3, max_iter=501, lamb=0, thresh_K=60, init=1):
         """init=0: random
             init=1: x_bar original
             init=else: x_tilde duong's paper
@@ -276,9 +276,9 @@ class EM:
         if init == 0: # random init
             vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
         elif init == 1: #hierarchical initialization -- x_bar
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, K=thresh_K, init=init)
         else:  #hierarchical initialization -- x_tilde
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, init=init)
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, K=thresh_K, init=init)
 
         ll_traj = []
         for i in range(max_iter):
@@ -321,36 +321,28 @@ class EM:
 
 #%%
 EMs, EMh = [], []
-s_raw, h_raw = [], []
 for snr in ['inf']:
-    ss, emh = [], []
-    hh, ems = [], []
-    for ind in range(100):
-        if snr != 'inf':
-            data = awgn(x_all[ind], snr)
-        else:
-            data = x_all[ind]
-        shat, Hhat, vhat, Rb, ll_traj, rank = EM().em_func_(data, J=3, max_iter=301, init=0)
-        temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
-        temp = h_corr(Hhat.squeeze(), h[ind])
-        print('h corr: ', temp)
-        print('s corr:', temp_s)
+    for thr_K in [10, 30, 50]:
+        ems, emh = [], []
+        for ind in tqdm(range(128)):
+            if snr != 'inf':
+                data = awgn(x_all[ind], snr)
+            else:
+                data = x_all[ind]
+            shat, Hhat, vhat, Rb, ll_traj, rank = \
+                EM().em_func_(data, J=3, max_iter=301, thresh_K=thr_K, init=1)
+            temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
+            temp = h_corr(Hhat.squeeze(), h[ind])
+            # print('h corr: ', temp)
+            # print('s corr:', temp_s)
 
-        noise = (x_all[ind] - (Hhat@shat).squeeze()).permute(2,0,1)
-        # rs0 = get_metric(s[ind], shat.squeeze().permute(2,0,1), noise)
-        # ems.append(rs0[0].item())
-        ems.append(temp_s)
-        emh.append(temp)
+            ems.append(temp_s)
+            emh.append(temp)
 
-        ss.append(shat)
-        hh.append(Hhat)
+        EMs.append(sum(ems)/128)
+        EMh.append(sum(emh)/128)
 
-    EMs.append(sum(ems)/100)
-    EMh.append(sum(emh)/100)
-    s_raw.append(ss)
-    h_raw.append(hh)
-    print('done with one snr')
-    print('EMs, EMh', EMs, EMh)
+        print('done with one HCI')
+        print(f'threshold={thr_K}, EMs, EMh', EMs, EMh)
 
 print('End date time ', datetime.now())
-torch.save((s_raw, h_raw), 'EMs_EMh_raw_init1.pt')
