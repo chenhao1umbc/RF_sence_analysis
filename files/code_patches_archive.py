@@ -246,7 +246,7 @@ if True:
     import time
 
     "raw data processing"
-    FT = 64  # 64, 80, 100, 128, 200, 256
+    FT = 48  #48, 64, 80, 100, 128, 200, 256
     var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
     data = {}
     for i in range(6):
@@ -262,9 +262,9 @@ if True:
     d,hall = [],[]
     for i in range(5):
         np.random.seed(i)
-        theta1 = np.random.rand(2000, 1)*180 + 0 # 0-180
-        theta2 = np.random.rand(2000, 1)*180 + 0 # 0-180
-        theta3 = np.random.rand(2000, 1)*180 - 0 # 0-180
+        theta1 = (np.random.rand(2000, 1)*180 + 0)/180*np.pi # 0-180
+        theta2 = (np.random.rand(2000, 1)*180 + 0)/180*np.pi # 0-180
+        theta3 = (np.random.rand(2000, 1)*180 + 0)/180*np.pi # 0-180
         thetas = np.stack([theta1, theta2, theta3], axis=2)  #shape of [6000,1,3]
         h0 = np.exp(-1j*np.pi*np.arange(0, 3)[:,None]@np.sin(thetas))  #[I, M, J]
         np.random.shuffle(data[0])
