@@ -75,8 +75,8 @@ if True:
     valtest = temp.reshape(-1,M,FT,FT)
     valtest = awgn_batch(valtest, snr=40, seed=1) # added white noise
     svaltest = torch.tensor(np.stack(svaltest, axis=1))  #[2000, J, F, T]
-    torch.save((valtest[:1000], s, hall[9,:1000]), f'val1kM3FT{FT}_xsh_data1.pt')
-    torch.save((valtest[1000:], s, hall[9,1000:]), f'test1kM3FT{FT}_xsh_data1.pt')
+    torch.save((valtest[:1000], svaltest[:1000], hall[9,:1000]), f'val1kM3FT{FT}_xsh_data1.pt')
+    torch.save((valtest[1000:], svaltest[1000:], hall[9,1000:]), f'test1kM3FT{FT}_xsh_data1.pt')
     print('done')
 
 
