@@ -108,7 +108,7 @@ class EM:
         Rj = torch.zeros(J, M, M).to(dtype)
         return vhat, Hhat, Rb, Rj
 
-    def cluster_init(self, x, J=3, K=60, init=1, Rbscale=1, showfig=False):
+    def cluster_init(self, x, J=3, K=60, init=1, Rbscale=1e-3, showfig=False):
         """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
         Given : A set X of obejects{x1,...,xn}
                 A cluster distance function dist(c1, c2)
@@ -235,7 +235,35 @@ class EM:
 #%%
 EMs, EMh = [], []
 for snr in ['inf']:
-    for thr_K in [5, 10, 30, 50]:
+    ems, emh = [], []
+    for ind in range(1000):
+        if snr != 'inf':
+            data = awgn(x_all[ind], snr)
+        else:
+            data = x_all[ind]
+        shat, Hhat, vhat, Rb, ll_traj, rank = \
+            EM().em_func_(data, J=3, max_iter=301, init=0)
+        temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
+        temp = h_corr(Hhat.squeeze(), h[ind])
+        # print('h corr: ', temp)
+        # print('s corr:', temp_s)
+
+        ems.append(temp_s)
+        emh.append(temp)
+
+    EMs.append(sum(ems)/1000)
+    EMh.append(sum(emh)/1000)
+
+    print('done with one HCI')
+    print(f'random init, EMs, EMh', EMs, EMh)
+
+print('End of random init date time ', datetime.now())
+
+
+
+EMs, EMh = [], []
+for snr in ['inf']:
+    for thr_K in [10, 30, 50]: #5 is not working
         ems, emh = [], []
         for ind in range(1000):
             if snr != 'inf':
