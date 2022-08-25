@@ -6,6 +6,14 @@ torch.set_printoptions(linewidth=160)
 from datetime import datetime
 print('starting date time ', datetime.now())
 
+"make the result reproducible"
+seed = 1
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)       # current GPU seed
+torch.cuda.manual_seed_all(seed)   # all GPUs seed
+torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cuda
+torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
+
 #%%
 d, s, h = torch.load('../data/nem_ss/val1kM3FT64_xsh_data1.pt')
 N, F = s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
@@ -235,53 +243,28 @@ class EM:
 #%%
 EMs, EMh = [], []
 for snr in ['inf']:
-    ems, emh = [], []
-    for ind in range(1000):
-        if snr != 'inf':
-            data = awgn(x_all[ind], snr)
-        else:
-            data = x_all[ind]
-        shat, Hhat, vhat, Rb, ll_traj, rank = \
-            EM().em_func_(data, J=3, max_iter=301, init=0)
-        temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
-        temp = h_corr(Hhat.squeeze(), h[ind])
-        # print('h corr: ', temp)
-        # print('s corr:', temp_s)
-
-        ems.append(temp_s)
-        emh.append(temp)
-
-    EMs.append(sum(ems)/1000)
-    EMh.append(sum(emh)/1000)
-
-    print('done with one HCI')
-    print(f'random init, EMs, EMh', EMs, EMh)
-
-print('End of random init date time ', datetime.now())
-
-
-
-EMs, EMh = [], []
-for snr in ['inf']:
-    for thr_K in [10, 30, 50]: #5 is not working
+    for thr_K in [5, 10, 30, 50]: #5,10 is not working
         ems, emh = [], []
         for ind in range(1000):
             if snr != 'inf':
                 data = awgn(x_all[ind], snr)
             else:
                 data = x_all[ind]
-            shat, Hhat, vhat, Rb, ll_traj, rank = \
-                EM().em_func_(data, J=3, max_iter=301, thresh_K=thr_K, init=1)
-            temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
-            temp = h_corr(Hhat.squeeze(), h[ind])
-            # print('h corr: ', temp)
-            # print('s corr:', temp_s)
+            try:
+                shat, Hhat, vhat, Rb, ll_traj, rank = \
+                    EM().em_func_(data, J=3, max_iter=301, thresh_K=thr_K, init=1)
+                temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
+                temp = h_corr(Hhat.squeeze(), h[ind])
+                # print('h corr: ', temp)
+                # print('s corr:', temp_s)
 
-            ems.append(temp_s)
-            emh.append(temp)
-
-        EMs.append(sum(ems)/1000)
-        EMh.append(sum(emh)/1000)
+                ems.append(temp_s)
+                emh.append(temp)
+            except:
+                print(f"An exception occurred {ind}")
+        
+        EMs.append(sum(ems)/len(ems))
+        EMh.append(sum(emh)/len(emh))
 
         print('done with one HCI')
         print(f'threshold={thr_K}, EMs, EMh', EMs, EMh)
