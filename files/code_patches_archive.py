@@ -26,12 +26,18 @@ if True:
     def get_ftdata(data_pool):
         *_, Z = stft(data_pool, fs=4e7, nperseg=FT, boundary=None)
         x = torch.tensor(np.roll(Z, FT//2, axis=1))  # roll nperseg//2
-        x =  x/((x.abs()**2).sum(dim=(1,2),keepdim=True)**0.5)# normalize
+        # x =  x/((x.abs()**2).sum(dim=(1,2),keepdim=True)**0.5)# normalize
         return x.to(torch.cfloat)
 
     for i in range(6):
+        # if i == 2 or i == 3:
+        #     temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k_resize2.mat')
+        # else:
+        #     temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
         temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
-        data[i] = temp['x']
+        x = torch.tensor(temp['x'])
+        x =  x/((x.abs()**2).sum(dim=(1),keepdim=True)**0.5)# normalize
+        data[i] = x
     s1 = get_ftdata(data[0]) # ble [2000,F,T]
     s2 = get_ftdata(data[2]) # fhss1
     s3 = get_ftdata(data[5]) # wifi2
@@ -63,7 +69,7 @@ if True:
     plt.figure()
     plt.imshow(x[0,0].abs(), aspect='auto', interpolation='None')
     plt.title('One example of 3-component mixture')
-    torch.save(x[:9000], f'tr18kM3FT{FT}_data1.pt')
+    torch.save(x[:9000], f'tr18kM3FT{FT}_data0.pt')
 
     "val and test data"
     temp = 0
@@ -75,11 +81,12 @@ if True:
     valtest = temp.reshape(-1,M,FT,FT)
     valtest = awgn_batch(valtest, snr=40, seed=1) # added white noise
     svaltest = torch.tensor(np.stack(svaltest, axis=1))  #[2000, J, F, T]
-    torch.save((valtest[:1000], svaltest[:1000], hall[9,:1000]), f'val1kM3FT{FT}_xsh_data1.pt')
-    torch.save((valtest[1000:], svaltest[1000:], hall[9,1000:]), f'test1kM3FT{FT}_xsh_data1.pt')
+    torch.save((valtest[:1000], svaltest[:1000], hall[9,:1000]), f'val1kM3FT{FT}_xsh_data0.pt')
+    torch.save((valtest[1000:], svaltest[1000:], hall[9,1000:]), f'test1kM3FT{FT}_xsh_data0.pt')
     print('done')
+
 #%% Prepare data2, fhss1, fhss2 is compressed in other ways to see more clearly
-#%% Prepare real data Jclasses 18ktr, with rangdom AOA, 1000 val, 1000 te
+    "Prepare real data Jclasses 18ktr, with rangdom AOA, 1000 val, 1000 te"
     from utils import *
     plt.rcParams['figure.dpi'] = 150
     torch.set_printoptions(linewidth=160)
