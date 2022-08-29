@@ -69,7 +69,7 @@ if True:
     plt.figure()
     plt.imshow(x[0,0].abs(), aspect='auto', interpolation='None')
     plt.title('One example of 3-component mixture')
-    torch.save(x[:9000], f'tr18kM3FT{FT}_data0.pt')
+    torch.save(x[:18000], f'tr18kM3FT{FT}_data0.pt')
 
     "val and test data"
     temp = 0
