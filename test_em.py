@@ -15,7 +15,7 @@ torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cud
 torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
 
 #%%
-d, s, h = torch.load('../data/nem_ss/val1kM3FT64_xsh_data1.pt')
+d, s, h = torch.load('../data/nem_ss/val1kM3FT64_xsh_data0.pt')
 N, F = s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
 ratio = d.abs().amax(dim=(1,2,3))
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
