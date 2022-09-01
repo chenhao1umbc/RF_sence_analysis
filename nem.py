@@ -29,61 +29,45 @@ class UNetHalf(nn.Module):
         super().__init__()
         self.n_ch = n_channels
         self.n_classes = n_classes
-        self.n_ch = 256
+        self.n_ch = 128
 
-        self.inc = DoubleConv(n_channels, self.n_ch)
-        self.up1 = MyUp(self.n_ch, self.n_ch//2)
-        self.up2 = MyUp(self.n_ch//2, self.n_ch//4)
-        self.up3 = MyUp(self.n_ch//4, self.n_ch//8)
-        self.up4 = MyUp(self.n_ch//8, self.n_ch//16)
+        self.up = nn.Sequential(DoubleConv(n_channels, self.n_ch),
+                    MyUp(self.n_ch, self.n_ch//2),
+                    MyUp(self.n_ch//2, self.n_ch//4),
+                    MyUp(self.n_ch//4, self.n_ch//4))
         self.reshape = nn.Sequential(
-            nn.Conv2d(self.n_ch//16, self.n_ch//16, kernel_size=5, dilation=3),
-            nn.BatchNorm2d(self.n_ch//16),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(self.n_ch//16, self.n_ch//16, kernel_size=5, dilation=3),
-            nn.BatchNorm2d(self.n_ch//16),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(self.n_ch//16, self.n_ch//8, kernel_size=3, dilation=2),
-            nn.BatchNorm2d(self.n_ch//8),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(self.n_ch//8, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.LeakyReLU(inplace=True))
+                    DoubleConv(self.n_ch//4, self.n_ch//4),
+                    DoubleConv(self.n_ch//4, self.n_ch//4))
         self.outc = OutConv(32, n_classes)
         self.sig = nn.Sigmoid()
     
     def forward(self, x):
-        x = self.inc(x)
-        x = self.up1(x)
-        x = self.up2(x)
-        x = self.up3(x)
-        x = self.up4(x)
+        x = self.up(x)
         x = self.reshape(x) 
         x = self.outc(x)
         x = self.sig(x)
         out = x/x.detach().amax(keepdim=True, dim=(-1,-2))
         return out
 
-I = 3000 # how many samples
-M, N, F, J = 3, 100, 100, 3
+I = 18000 # how many samples
+M, N, F, J = 3, 64, 64, 3
 NF = N*F
 eps, delta, glr = 5e-4, 1, 0.01 # delta is scale for Rb, glr is gamma learning rate
 opts = {}
 opts['n_ch'] = [1,1]  
-opts['batch_size'] = 48
+opts['batch_size'] = 128
 opts['EM_iter'] = 201
 opts['lr'] = 0.001
 opts['n_epochs'] = 71
 opts['d_gamma'] = 8 
 n = 5  # for stopping 
 
-d = torch.load('../data/nem_ss/tr3kM3FT100.pt')
+d = torch.load('../data/nem_ss/tr18kM3FT64_data0.pt').to(torch.cdouble)
 xtr = (d/d.abs().amax(dim=(1,2,3))[:,None,None,None]).permute(0,2,3,1)# [sample, N, F, channel]
-data = Data.TensorDataset(xtr)
-tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
-
 loss_iter, loss_tr = [], []
 model = UNetHalf(opts['n_ch'][0], opts['n_ch'][1]).cuda()
+for w in model.parameters():
+    nn.init.normal_(w, mean=0., std=0.01)
 optimizer = torch.optim.RAdam(model.parameters(),
                 lr= opts['lr'],
                 betas=(0.9, 0.999), 
@@ -91,29 +75,24 @@ optimizer = torch.optim.RAdam(model.parameters(),
                 weight_decay=0)
 
 "initial"
-# Hhat = torch.randn(M, J).to(torch.cdouble).cuda()
-h = torch.load('../data/nem_ss/HCinit_hhat_M3_FT100.pt')
-# _, _ , h = d = torch.load('../data/nem_ss/test500M3FT100_xsh.pt')
-Htr = torch.tensor(h).to(torch.cdouble).repeat(I,1,1)
+# Htr = torch.load('../data/nem_ss/tr18kHCI10.pt')
+Htr = torch.rand(18_000,3,3).to(torch.cdouble)
 Rbtr = torch.ones(I, M).diag_embed().to(torch.cdouble)*delta
-gtr0 = torch.load('../data/nem_ss/xx_all_8by8.pt')
-gtr0 = gtr0/gtr0.amax(dim=[3,4])[...,None,None]
-gtr0 = torch.cat([gtr0 for j in range(J)], dim=1).to(torch.float)
-noise = torch.rand(I,J,1,opts['d_gamma'], opts['d_gamma']) # shape of [J,1,8,8], cpu()
-gtr = (gtr0 + noise/10).to(torch.float) # 10db snr to resized signal
-
+gtr = torch.rand(I,J,1,opts['d_gamma'], opts['d_gamma']) # shape of [J,1,8,8], cpu()
 
 #%%
-#@title gamma does not have inner loop
-for epoch in range(opts['n_epochs']):    
-    for i, (x,) in enumerate(tr): # gamma [n_batch, 4, 4]
+for epoch in range(opts['n_epochs']):  
+    res = myshuffle((xtr, Rbtr, gtr, Htr))  
+    data = Data.TensorDataset(*res)
+    tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
+
+    for i, (x, Rb, g, Hhat) in enumerate(tr): # gamma [n_batch, 4, 4]
         for param in model.parameters():
             param.requires_grad_(False)
         model.eval()
-        #%% EM part       
-        Rb = Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
-        g = gtr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
-        Hhat = Htr[i*opts['batch_size']:(i+1)*opts['batch_size']].cuda()
+
+        "EM part"
+        Rb, g, Hhat = Rb.cuda(), g.cuda(), Hhat.cuda()
         outs = []
         for j in range(J):
             outs.append(model(g[:,j]))
@@ -147,8 +126,6 @@ for epoch in range(opts['n_epochs']):
             Rb = Rb.diagonal(dim1=-1, dim2=-2).diag_embed()
             Rb.imag = Rb.imag - Rb.imag
 
-            # vj = Rsshatnf.diagonal(dim1=-1, dim2=-2)
-            # vj.imag = vj.imag - vj.imag
             outs = []
             for j in range(J):
                 outs.append(model(g[:,j]))
@@ -157,7 +134,7 @@ for epoch in range(opts['n_epochs']):
             loss = loss_func(vhat, Rsshatnf.cuda())
             optim_gamma.zero_grad()   
             loss.backward()
-            torch.nn.utils.clip_grad_norm_([g], max_norm=1)
+            torch.nn.utils.clip_grad_norm_([g], max_norm=10)
             optim_gamma.step()
             torch.cuda.empty_cache()
             
@@ -177,28 +154,16 @@ for epoch in range(opts['n_epochs']):
             plt.title(f'the log-likelihood of the first batch at epoch {epoch}')
             plt.savefig(fig_loc + f'id{rid}_log-likelihood_epoch{epoch}')
 
-            plt.figure()
-            plt.imshow(vhat[0,...,0].real.cpu())
-            plt.colorbar()
-            plt.title(f'1st source of vj in first sample from the first batch at epoch {epoch}')
-            plt.savefig(fig_loc + f'id{rid}_vj1_epoch{epoch}')
+            for ii in range(J):
+                plt.figure()
+                plt.imshow(vhat[0,...,ii].real.cpu())
+                plt.colorbar()
+                plt.title(f'source of v{ii} in 1st sample from the 1st batch at epoch {epoch}')
+                plt.savefig(fig_loc + f'id{rid}_vj{ii}_epoch{epoch}')      
 
-            plt.figure()
-            plt.imshow(vhat[0,...,1].real.cpu())
-            plt.colorbar()
-            plt.title(f'2nd source of vj in first sample from the first batch at epoch {epoch}')
-            plt.savefig(fig_loc + f'id{rid}_vj2_epoch{epoch}')
-
-            plt.figure()
-            plt.imshow(vhat[0,...,2].real.cpu())
-            plt.colorbar()
-            plt.title(f'3rd source of vj in first sample from the first batch at epoch {epoch}')
-            plt.savefig(fig_loc + f'id{rid}_vj3_epoch{epoch}')
-
-        #%% update variable
+        "update variable"
         with torch.no_grad():
             gtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = g.cpu()
-            # vtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = vhat.cpu()
             Htr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Hhat.cpu()
             Rbtr[i*opts['batch_size']:(i+1)*opts['batch_size']] = Rb.cpu()
         g.requires_grad_(False)
@@ -215,7 +180,7 @@ for epoch in range(opts['n_epochs']):
         ll, *_ = log_likelihood(x, vhat, Hhat, Rb)
         loss = -ll
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
         optimizer.step()
         torch.cuda.empty_cache()
         loss_iter.append(loss.detach().cpu().item())

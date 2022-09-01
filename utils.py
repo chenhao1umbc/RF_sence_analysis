@@ -402,6 +402,18 @@ def s_corr(vh, v):
     r = sorted(r, reverse=True)
     return r[0]/J
 
+def myshuffle(x):
+    """This fuction will shuffle a list of data with the same shuffling index
+
+    Args:
+        x : a lift of pytorch tensors, each tensor first dimension should be the same
+    """
+    ind = torch.randperm(x[0].shape[0])
+    res = []
+    for l in x:
+        res.append(l[ind])
+    return res
+    
 #%%
 if __name__ == '__main__':
     a, b = torch.rand(3,1).double(), torch.rand(3,1).double()
