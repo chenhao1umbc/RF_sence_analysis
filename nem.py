@@ -7,6 +7,7 @@ from datetime import datetime
 print('starting date time ', datetime.now())
 torch.manual_seed(1)
 
+#%%
 rid = 'n1' # running id
 fig_loc = '../data/nem_ss/figures/'
 mod_loc = '../data/nem_ss/models/'
@@ -82,10 +83,10 @@ gtr = torch.rand(I,J,1,opts['d_gamma'], opts['d_gamma']) # shape of [J,1,8,8], c
 
 #%%
 for epoch in range(opts['n_epochs']):  
-    res = myshuffle((xtr, Rbtr, gtr, Htr))  
+    xtr, Rbtr, gtr, Htr = myshuffle((xtr, Rbtr, gtr, Htr))  
+    res = xtr, Rbtr, gtr, Htr
     data = Data.TensorDataset(*res)
     tr = Data.DataLoader(data, batch_size=opts['batch_size'], drop_last=True)
-
     for i, (x, Rb, g, Hhat) in enumerate(tr): # gamma [n_batch, 4, 4]
         for param in model.parameters():
             param.requires_grad_(False)
