@@ -200,4 +200,29 @@ for snr in ['inf']:
         print('done with one HCI')
         print(f'threshold={thr_K}, EMs, EMh', EMs, EMh)
 
+    ems, emh = [], []
+    for ind in range(1000):
+        if snr != 'inf':
+            data = awgn(x_all[ind], snr)
+        else:
+            data = x_all[ind]
+        try:
+            shat, Hhat, vhat, Rb, ll_traj, rank = \
+                EM().em_func_(data, J=3, max_iter=301, init=0)
+            temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
+            temp = h_corr(Hhat.squeeze(), h[ind])
+            if ind %20 == 0 :
+                print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)
+
+            ems.append(temp_s)
+            emh.append(temp)
+        except:
+            print(f"An exception occurred {ind}")
+
+    EMs.append(sum(ems)/len(ems))
+    EMh.append(sum(emh)/len(emh))
+
+    print('done with random initi')
+    print('EMs, EMh', EMs, EMh)
+
 print('End date time ', datetime.now())
