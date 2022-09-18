@@ -427,7 +427,6 @@ def s_corr_cuda(s, shat):
     p = pj.mean(dim=-1).max(0)[0] # shape of [I]
     return p
 
-
 def myshuffle(x):
     """This fuction will shuffle a list of data with the same shuffling index
 
