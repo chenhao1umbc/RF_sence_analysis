@@ -402,6 +402,23 @@ def s_corr(vh, v):
     r = sorted(r, reverse=True)
     return r[0]/J
 
+def s_corr_cuda(s, shat):
+    """this is a cuda version and it uses the batch
+
+    Args:
+        s (tensor): s>0, real number, shape of [I,F,T,J]
+        shat (tensor): same as s
+    """
+    J = s.shape[-1]
+    permutes = list(itertools.permutations(list(range(J))))
+    allperm = shat[..., permutes].permute(3,0,1,2,4) # shape of [J!,I,F,T,J]
+    allperm = (allperm - allperm.mean(dim=(2,3), keepdim=True)).permute(0,1,4,2,3)
+    s = (s - s.mean(dim=(1,2), keepdim=True)).permute(0,3,1,2) #[I,J,F,T]
+    pj = (allperm*s).sum(dim=(-1,-2)).abs()/(s.norm(dim=(-1,-2))*allperm.norm(dim=(-1,-2)))
+    p = pj.mean(dim=-1).max(0)[0] # shape of [I]
+    return p
+
+
 def myshuffle(x):
     """This fuction will shuffle a list of data with the same shuffling index
 
