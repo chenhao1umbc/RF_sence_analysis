@@ -402,6 +402,15 @@ def s_corr(vh, v):
     r = sorted(r, reverse=True)
     return r[0]/J
 
+def h_corr_cuda(h, hh):
+    "hh and h are in the shape of [M, J], dtype cfloat"
+    J = h.shape[-1]
+    permutes = list(itertools.permutations(list(range(J))))
+    allperm = hh[:,permutes].permute(1,2,0) #[J!,J,M]
+    pj = (h.t().conj()*allperm).sum(dim=-1).abs()/(h.norm(dim=0)*allperm.norm(dim=-1))
+    p = pj.mean(dim=-1).max() # shape of
+    return p
+
 def s_corr_cuda(s, shat):
     """this is a cuda version and it uses the batch
 
