@@ -184,7 +184,7 @@ for snr in ['inf']:
             try:
                 shat, Hhat, vhat, Rb, ll_traj, rank = \
                     EM().em_func_(data, J=3, max_iter=301, thresh_K=thr_K, init=1)
-                temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
+                temp_s = s_corr_cuda(shat.squeeze().abs()[None], s_all[ind:ind+1].abs()).item()
                 temp = h_corr(Hhat.squeeze(), h[ind])
                 if ind %20 == 0 :
                     print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)

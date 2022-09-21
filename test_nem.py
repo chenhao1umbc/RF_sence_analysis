@@ -227,7 +227,7 @@ for snr in ['inf']:
 
         shv, g, Rb, loss = nem_hci(data, J=3, seed=10, model=model, max_iter=301)
         shat, Hhat, vhat = shv
-        temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
+        temp_s = s_corr_cuda(shat.squeeze().abs()[None], s_all[ind:ind+1].abs()).item()
         temp = h_corr(Hhat.squeeze(), h[ind])
         if ind %20 == 0 :
             print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)
