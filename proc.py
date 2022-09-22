@@ -1,7 +1,7 @@
 #%%
 import matplotlib.pyplot as plt
 plt.rcParams['figure.dpi'] = 150
-for name in ['s46_','s50_', 's48']:
+for name in ['s71']:
     hall, sall = [], []
     file1 = open('../data/0ut_files/'+name+'.out', 'r')
     lines = file1.readlines()
@@ -19,7 +19,7 @@ for name in ['s46_','s50_', 's48']:
     plt.figure()
     plt.plot(hall, '--x')
     plt.plot(sall, '-o')
-    plt.ylim([0.55, 1])
+    # plt.ylim([0.55, 1])
     plt.grid()
     plt.legend(['h corr.', 's corr.'])
     plt.title(name)

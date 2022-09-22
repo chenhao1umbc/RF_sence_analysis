@@ -1,4 +1,7 @@
-#%% s67
+"""3class best is s71 epoch 695"""
+
+
+#%%
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -14,6 +17,7 @@ torch.cuda.manual_seed_all(seed)   # all GPUs seed
 torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cuda
 torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
 
+
 #%% define models and functions
 from vae_modules import *
 def lower2matrix(rx12):
@@ -25,7 +29,7 @@ def lower2matrix(rx12):
     rx_inv_hat[:, indx[0], indx[1]] = rx_inv_hat[:, indx[0], indx[1]]/2
     return rx_inv_hat
 
-class NNet(nn.Module):
+class NNet_s10(nn.Module):
     """This is recursive Wiener filter version, with Rb threshold of [1e-3, 1e2]
     Input shape [I,M,N,F], e.g.[32,3,100,100]
     J <=K
@@ -36,7 +40,7 @@ class NNet(nn.Module):
         self.J, self.M = K, M
         down_size = int(im_size/4)
         self.mainnet = nn.Sequential(
-            FC_layer_g(12, 128),
+            FC_layer_g(42, 128),
             FC_layer_g(128, 128),
         )
         self.hnet = nn.Sequential(
@@ -50,8 +54,8 @@ class NNet(nn.Module):
             FC_layer_g(128, 128),
             FC_layer_g(128, 128),
             FC_layer_g(128, 64),
-            FC_layer_g(64, 32),
-            nn.Linear(32, 12)
+            FC_layer_g(64, 64),
+            nn.Linear(64, 42)
         )
 
         self.encoder = nn.Sequential(
@@ -68,6 +72,9 @@ class NNet(nn.Module):
             DoubleConv_g(in_channels=64, out_channels=32),
             Up_g(in_channels=32, out_channels=16),
             DoubleConv_g(in_channels=16, out_channels=8),
+            nn.Conv2d(8, 8, kernel_size=3, padding=(1,2)),
+            nn.GroupNorm(num_groups=max(8//4,1), num_channels=8),
+            nn.LeakyReLU(inplace=True),
             OutConv(in_channels=8, out_channels=1),
             ) 
         self.bilinear = nn.Linear(self.dz, self.dz, bias=False)
@@ -84,7 +91,7 @@ class NNet(nn.Module):
         xj = x.permute(0,2,3,1)[...,None]  # shape of [I,N,F,M,1]
         for i in range(self.J):
             "Get H estimation"
-            ind = torch.tril_indices(3,3)
+            ind = torch.tril_indices(M,M)
             rx = (xj@xj.transpose(-1,-2).conj()).mean(dim=(1,2))
             rx_lower = rx[:, ind[0], ind[1]]
             mid =self.mainnet(torch.stack((rx_lower.real,rx_lower.imag),\
@@ -133,73 +140,50 @@ class NNet(nn.Module):
 
         return vhat.diag_embed(), Hhat, Rb, mu, logvar, zall
 
-def loss_fun(x, Rs, Hhat, Rb, mu, logvar, zall, beta=1):
-    I, M, J = x.shape[0], x.shape[1], Rs.shape[-1]
-    x = x.permute(0,2,3,1)
-    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    Rxperm = Hhat @ Rs.permute(1,2,0,3,4) @ Hhat.transpose(-1,-2).conj() + Rb
-    Rx = Rxperm.permute(2,0,1,3,4) # shape of [I, N, F, M, M]
-    ll = -(np.pi*Rx.det()).log() - (x[...,None,:].conj()@Rx.inverse()@x[...,None]).squeeze() 
-
-    return -ll.sum(), beta*kl 
-
 #%%
 I = 18000 # how many samples
-M, N, F, J = 3, 64, 64, 3
-NF = N*F
+M, N, F, J = 6, 64, 66, 6
 eps = 5e-4
 opts = {}
 opts['batch_size'] = 128
 opts['n_epochs'] = 701
 opts['lr'] = 1e-3
 
-
-xval, sval, hgt = torch.load('../data/nem_ss/val1kM3FT64_xsh_data0.pt')
+xval, sval, hgt = torch.load('../data/nem_ss/test1kM3FT64_xsh_data3.pt')
 sval= sval.permute(0,2,3,1)
 xval = xval/xval.abs().amax(dim=(1,2,3), keepdim=True)
 data = Data.TensorDataset(xval, sval, hgt)
 dval = Data.DataLoader(data, batch_size=200, drop_last=True)
 
-#%%
+
 loss_iter, loss_tr, loss1, loss2, loss_eval = [], [], [], [], []
-model = torch.load('/home/chenhao1/Hpython/data/data_ss/models/s67/model_epoch450.pt')
-model = model.cuda()
-optimizer = torch.optim.RAdam(model.parameters(),
-                lr= opts['lr'],
-                betas=(0.9, 0.999), 
-                eps=1e-8,
-                weight_decay=0)
+# model = NNet_s10(M,J,N).cuda()
+model = torch.load('../data/data_ss/models/s71/model_epoch400.pt')
 
+#%%
+print('Start date time ', datetime.now())
 model.eval()
+hall, sall = [], []
 with torch.no_grad():
-    av_hcorr, av_scorr, temp = [], [], []
-    for i, (x, s, h) in enumerate(dval):
-        xval_cuda = x.cuda()
-        Rs, Hhat_val, Rb, mu, logvar, zall= model(xval_cuda)
-        l1, l2 = loss_fun(xval_cuda, Rs, Hhat_val, Rb, mu, logvar, zall)
-        temp.append((l1+l2).cpu().item()/x.shape[0])
-                
-        Rxperm = Hhat_val@Rs.permute(1,2,0,3,4)@Hhat_val.transpose(-1,-2).conj() + Rb
-        shatperm = Rs.permute(1,2,0,3,4)@Hhat_val.conj().transpose(-1,-2)\
-                @Rxperm.inverse()@xval_cuda.permute(2,3,0,1)[...,None]
-        shat = shatperm.permute(2,0,1,3,4).squeeze().cpu().abs()
-        for ind in range(x.shape[0]):
-            hh = Hhat_val[ind]
-            av_hcorr.append(h_corr(hh.cpu(), h[ind]))
-            av_scorr.append(s_corr(s[ind].abs(), shat[ind]))
-        
-        if i == 0:
-            plt.figure()
-            for ind in range(3):
-                for ii in range(J):
-                    plt.subplot(3,3,ii+1+ind*3)
-                    plt.imshow(shat[ind,:,:,ii])
-                    # plt.tight_layout(pad=1.1)
-                    # if ii == 0 : plt.title(f'Epoch{epoch}_sample{ind}')
-
-    loss_eval.append(sum(temp)/len(temp))
-    print('first 3 h_corr',av_hcorr[:3],' averaged:', sum(av_hcorr)/len(av_hcorr))
-    print('first 3 s_corr',av_scorr[:3],' averaged:', sum(av_scorr)/len(av_hcorr))
-
+    for snr in ['inf', 20, 10, 5, 0]:
+        av_hcorr, av_scorr = [], []
+        for i, (x, s, h) in enumerate(dval):
+            print(snr, i)
+            if snr != 'inf':
+                x = awgn_batch(x, snr)
+            xval_cuda = x.cuda()
+            Rs, Hhat_val, Rb, mu, logvar, zall= model(xval_cuda)                
+            Rxperm = Hhat_val@Rs.permute(1,2,0,3,4)@Hhat_val.transpose(-1,-2).conj() + Rb
+            shatperm = Rs.permute(1,2,0,3,4)@Hhat_val.conj().transpose(-1,-2)\
+                    @Rxperm.inverse()@xval_cuda.permute(2,3,0,1)[...,None]
+            shat = shatperm.permute(2,0,1,3,4).squeeze().cpu().abs()
+            for ind in range(x.shape[0]):
+                hh = Hhat_val[ind]
+                av_hcorr.append(h_corr_cuda(hh, h[ind].cuda()).cpu().item())
+                av_scorr.append(s_corr_cuda(s[ind:ind+1].abs().cuda(), \
+                    shat[ind:ind+1].cuda()).cpu().item())
+        hall.append(sum(av_hcorr)/len(av_hcorr))
+        sall.append(sum(av_scorr)/len(av_scorr))
+print(hall, sall)
 print('done')
 print('End date time ', datetime.now())

@@ -15,7 +15,7 @@ torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cud
 torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
 
 #%%
-d, s, h = torch.load('../data/nem_ss/val1kM3FT64_xsh_data3.pt')
+d, s, h = torch.load('../data/nem_ss/test1kM3FT64_xsh_data3.pt')
 N, F = s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
 ratio = d.abs().amax(dim=(1,2,3))
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
@@ -214,10 +214,10 @@ def nem_hci(x, J=6, Hscale=1, Rbscale=1, max_iter=501, seed=1, model=''):
 
 #%%
 rid = 'n4'
-model = f'../data/nem_ss/models/{rid}/model_rid{rid}_29.pt'
+model = f'../data/nem_ss/models/{rid}/model_rid{rid}_39.pt'
 
 EMs, EMh = [], []
-for snr in ['inf']:
+for snr in ['inf', 20, 10, 5, 0]:
     ems, emh = [], []
     for ind in range(1000):
         if snr != 'inf':
@@ -227,7 +227,7 @@ for snr in ['inf']:
 
         shv, g, Rb, loss = nem_hci(data, J=3, seed=10, model=model, max_iter=301)
         shat, Hhat, vhat = shv
-        temp_s = s_corr_cuda(shat.squeeze().abs()[None], s_all[ind:ind+1].abs()).item()
+        temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
         temp = h_corr(Hhat.squeeze(), h[ind])
         if ind %20 == 0 :
             print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)
@@ -237,7 +237,7 @@ for snr in ['inf']:
     EMs.append(sum(ems)/len(ems))
     EMh.append(sum(emh)/len(emh))
 
-    print('EMs, EMh', EMs, EMh)
+    print(f'snr{snr}, EMs, EMh', EMs, EMh)
 
 print('End date time ', datetime.now())
 

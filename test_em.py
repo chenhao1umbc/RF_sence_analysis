@@ -15,7 +15,7 @@ torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cud
 torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
 
 #%%
-d, s, h = torch.load('../data/nem_ss/val1kM3FT64_xsh_data3.pt')
+d, s, h = torch.load('../data/nem_ss/test1kM3FT64_xsh_data3.pt')
 N, F = s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
 ratio = d.abs().amax(dim=(1,2,3))
 x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
@@ -173,33 +173,7 @@ class EM:
 
 #%%
 EMs, EMh = [], []
-for snr in ['inf']:
-    for thr_K in [5, 10, 30, 50]: #5,10 is not working
-        ems, emh = [], []
-        for ind in range(1000):
-            if snr != 'inf':
-                data = awgn(x_all[ind], snr)
-            else:
-                data = x_all[ind]
-            try:
-                shat, Hhat, vhat, Rb, ll_traj, rank = \
-                    EM().em_func_(data, J=3, max_iter=301, thresh_K=thr_K, init=1)
-                temp_s = s_corr_cuda(shat.squeeze().abs()[None], s_all[ind:ind+1].abs()).item()
-                temp = h_corr(Hhat.squeeze(), h[ind])
-                if ind %20 == 0 :
-                    print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)
-
-                ems.append(temp_s)
-                emh.append(temp)
-            except:
-                print(f"An exception occurred {ind}")
-        
-        EMs.append(sum(ems)/len(ems))
-        EMh.append(sum(emh)/len(emh))
-
-        print('done with one HCI')
-        print(f'threshold={thr_K}, EMs, EMh', EMs, EMh)
-
+for snr in ['inf', 20, 10, 5, 0]:
     ems, emh = [], []
     for ind in range(1000):
         if snr != 'inf':
@@ -208,7 +182,7 @@ for snr in ['inf']:
             data = x_all[ind]
         try:
             shat, Hhat, vhat, Rb, ll_traj, rank = \
-                EM().em_func_(data, J=3, max_iter=301, init=0)
+                EM().em_func_(data, J=3, max_iter=301, thresh_K=10, init=1)
             temp_s = s_corr(shat.squeeze().abs(), s_all[ind].abs())
             temp = h_corr(Hhat.squeeze(), h[ind])
             if ind %20 == 0 :
@@ -218,11 +192,11 @@ for snr in ['inf']:
             emh.append(temp)
         except:
             print(f"An exception occurred {ind}")
-
+    
     EMs.append(sum(ems)/len(ems))
     EMh.append(sum(emh)/len(emh))
 
-    print('done with random initi')
+    print(f'done with one snr {snr}')
     print('EMs, EMh', EMs, EMh)
 
 print('End date time ', datetime.now())
