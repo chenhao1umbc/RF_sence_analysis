@@ -152,7 +152,6 @@ xval = xval/xval.abs().amax(dim=(1,2,3), keepdim=True)
 data = Data.TensorDataset(xval, sval, hgt)
 dval = Data.DataLoader(data, batch_size=200, drop_last=True)
 
-
 loss_iter, loss_tr, loss1, loss2, loss_eval = [], [], [], [], []
 # model = NNet_s10(M,J,N).cuda()
 model = torch.load('../data/data_ss/models/s71/model_epoch400.pt')
