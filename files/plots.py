@@ -192,34 +192,45 @@ if True:
     vae_s = [0.9600338533520698, 0.9418429788947106, 0.8837822783589363, 0.793323303937912, 0.640838300049305]
 
     plt.figure()
+    plt.subplot(1,2,1)
     plt.plot([0, 5, 10, 20, 'inf'], em_h[::-1], '-x') 
-    plt.plot([0, 5, 10, 20, 'inf'], nem_h[::-1], '--o') 
     plt.plot([0, 5, 10, 20, 'inf'], vae_h[::-1], '-.v') 
+    plt.plot([0, 5, 10, 20, 'inf'], nem_h[::-1], '--o') 
     plt.ylim([0.7, 1])
-    plt.legend(['EM', 'NEM', 'VAE'])
+    plt.legend(['EM', 'VAE', 'NEM'])
+    plt.title('Channel correlation')
 
-    plt.figure()
+    plt.subplot(1,2,2)
     plt.plot([0, 5, 10, 20, 'inf'], em_s[::-1], '-x') 
-    plt.plot([0, 5, 10, 20, 'inf'], nem_s[::-1], '--o') 
     plt.plot([0, 5, 10, 20, 'inf'], vae_s[::-1], '-.v') 
+    plt.plot([0, 5, 10, 20, 'inf'], nem_s[::-1], '--o')
     plt.ylim([0.5, 1])
-    plt.legend(['EM', 'NEM', 'VAE'])
+    plt.legend(['EM', 'VAE', 'NEM'])
+    plt.title('STFT correlation')
 
 #%% EM, VAE 6-classes
     em_s = [0.7104288394227624, 0.6627159406762938, 0.5375066923326451, 0.4796916221137223, 0.40751543293007564] 
     em_h = [0.8605299955010414, 0.8424599928004298, 0.71805556201585, 0.6598005341413972, 0.6292962564901469]
 
+    nem_boost_s = [0.7811090244279021, 0.7831581963273233]
+    nem_boost_h = [0.9039569078025305, 0.9150751507609541 ]
+
     vae_s = [0.775136716246605, 0.7314041863679885, 0.6754818802177907, 0.6074458916485309, 0.479902028799057]
     vae_h = [0.9064201520085334, 0.8869782113432885, 0.8421832569241524, 0.8143593111634254, 0.7608716414570809] 
 
     plt.figure()
-    plt.plot([0, 5, 10, 20, 'inf'], em_s[::-1], '-x') 
-    plt.plot([0, 5, 10, 20, 'inf'], vae_s[::-1], '-.v') 
-    # plt.ylim([0.5, 1])
-    plt.legend(['EM', 'NEM', 'VAE'])
-
-    plt.figure()
+    plt.subplot(1,2,1)
     plt.plot([0, 5, 10, 20, 'inf'], em_h[::-1], '-x') 
     plt.plot([0, 5, 10, 20, 'inf'], vae_h[::-1], '-.v') 
+    plt.plot(['inf', 20], nem_boost_h[::-1], '--o')
     # plt.ylim([0.5, 1])
-    plt.legend(['EM', 'NEM', 'VAE'])
+    plt.legend(['EM', 'VAE', 'NEM'])
+    plt.title('Channel correlation')
+
+    plt.subplot(1,2,2)
+    plt.plot([0, 5, 10, 20, 'inf'], em_s[::-1], '-x') 
+    plt.plot([0, 5, 10, 20, 'inf'], vae_s[::-1], '-.v')
+    plt.plot(['inf', 20], nem_boost_s[::-1], '--o') 
+    # plt.ylim([0.5, 1])
+    plt.legend(['EM', 'VAE', 'NEM'])
+    plt.title('STFT correlation')
