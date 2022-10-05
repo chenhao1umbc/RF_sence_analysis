@@ -235,8 +235,8 @@ if True:
     vae = [0.6853250654935836,  0.7350429352819919, 0.7588296358287334, 0.7619795973300933, 0.7876128880381584]
     nem = [0.7686689290784765,0.770921271815709, 0.7710523081942222, 0.7756224503521928, 0.7829264613947694]
     plt.figure()
-    plt.plot(['1k', '2k', '3k', '4k', '6k'], vae, '-x') 
-    plt.plot(['1k', '2k', '3k', '4k', '6k'], nem, '-.v') 
+    plt.plot(['1k', '2k', '3k', '4k', '6k'], vae, '-.v', color="#ff7f0e") 
+    plt.plot(['1k', '2k', '3k', '4k', '6k'], nem, '--o', color="#2ca02c") 
     # plt.ylim([0.5, 1])
     plt.legend(['VAE', 'NEM'])
-    plt.title('Channel correlation')
+    # plt.title('Channel correlation')
