@@ -88,24 +88,25 @@ def calc_ll_cpx2(x, vhat, Rj, Rb):
     return l.sum().real
 
 def mydet(x):
-    """calc determinant of tensor for the last 2 dimensions,
-    suppose x is postive definite hermitian matrix
+    # """calc determinant of tensor for the last 2 dimensions,
+    # suppose x is postive definite hermitian matrix
 
-    Args:
-        x ([pytorch tensor]): [shape of [..., N, N]]
-    """
-    s = x.shape[:-2]
-    N = x.shape[-1]
-    try:
-        l = torch.linalg.cholesky(x)
-    except:
-        eps = x.detach().abs().max()
-        l = torch.linalg.cholesky(x + eps*1e-5*torch.ones(x.shape[:-1], device=x.device).diag_embed())
-        print('low rank happend')
-    ll = l.diagonal(dim1=-1, dim2=-2)
-    res = torch.ones(s).to(x.device)
-    for i in range(N):
-        res = res * ll[..., i]**2
+    # Args:
+    #     x ([pytorch tensor]): [shape of [..., N, N]]
+    # """
+    # s = x.shape[:-2]
+    # N = x.shape[-1]
+    # try:
+    #     l = torch.linalg.cholesky(x)
+    # except:
+    #     eps = x.detach().abs().max()
+    #     l = torch.linalg.cholesky(x + eps*1e-5*torch.ones(x.shape[:-1], device=x.device).diag_embed())
+    #     print('low rank happend')
+    # ll = l.diagonal(dim1=-1, dim2=-2)
+    # res = torch.ones(s).to(x.device)
+    # for i in range(N):
+    #     res = res * ll[..., i]**2
+    res = torch.linalg.det(x)
     return res
 
 def threshold(x, floor=1e-20, ceiling=1e3):
