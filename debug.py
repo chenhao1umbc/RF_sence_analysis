@@ -1,4 +1,5 @@
-#%% s76a
+"""3class best is s71 epoch 400"""
+#%%
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 plt.rcParams['figure.dpi'] = 100
@@ -13,6 +14,10 @@ torch.cuda.manual_seed(seed)       # current GPU seed
 torch.cuda.manual_seed_all(seed)   # all GPUs seed
 torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cuda
 torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
+
+
+I =20
+Htr = torch.load('../data/nem_ss/tr18kHCI10M6_data4.pt').to(torch.cdouble)[:I]
 
 
 #%% define models and functions
@@ -139,7 +144,7 @@ class NNet_s10(nn.Module):
 
 #%%
 I = 18000 # how many samples
-M, N, F, J = 6, 64, 66, 6
+M, N, F, J = 3, 64, 66, 3
 eps = 5e-4
 opts = {}
 opts['batch_size'] = 128
@@ -152,6 +157,7 @@ xval = xval/xval.abs().amax(dim=(1,2,3), keepdim=True)
 data = Data.TensorDataset(xval, sval, hgt)
 dval = Data.DataLoader(data, batch_size=200, drop_last=True)
 
+
 loss_iter, loss_tr, loss1, loss2, loss_eval = [], [], [], [], []
 # model = NNet_s10(M,J,N).cuda()
 model = torch.load('../data/data_ss/models/s71/model_epoch400.pt')
@@ -161,7 +167,7 @@ print('Start date time ', datetime.now())
 model.eval()
 hall, sall = [], []
 with torch.no_grad():
-    for snr in ['inf', 20, 10, 5, 0]:
+    for snr in ['inf']:
         av_hcorr, av_scorr = [], []
         for i, (x, s, h) in enumerate(dval):
             print(snr, i)
@@ -178,6 +184,7 @@ with torch.no_grad():
                 av_hcorr.append(h_corr_cuda(hh, h[ind].cuda()).cpu().item())
                 av_scorr.append(s_corr_cuda(s[ind:ind+1].abs().cuda(), \
                     shat[ind:ind+1].cuda()).cpu().item())
+            if i ==0 : break
         hall.append(sum(av_hcorr)/len(av_hcorr))
         sall.append(sum(av_scorr)/len(av_scorr))
 print(hall, sall)
