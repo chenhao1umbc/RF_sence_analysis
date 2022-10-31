@@ -4,7 +4,7 @@ if True:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from utils import *
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
-    plt.rcParams['figure.dpi'] = 150
+    plt.rcParams['figure.dpi'] = 500
     torch.set_printoptions(linewidth=160)
     torch.set_default_dtype(torch.double)
 
@@ -211,7 +211,7 @@ if True:
     plt.xlabel('SNR (dB)')
     plt.tight_layout(pad=1)
 
-#%% EM, VAE 6-classes
+    #%% EM, VAE 6-classes
     em_s = [0.7445756667554378, 0.7094151854638325, 0.5843308384998702, 0.5246096028979378, 0.4447607653506068]
     nem_s = [0.7869621894432611, 0.7704570677869884, 0.720015995038842, 0.6592119414151044, 0.4793672238778914]
     vae_s = [0.8535560958385467, 0.8231705112457275, 0.7537818377017975, 0.6681900478005409, 0.5212438029050827]
