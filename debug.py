@@ -119,8 +119,7 @@ class EM:
         """
         #  EM algorithm for one complex sample
         N, F, M = x.shape
-        NF= N*F
-        Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
+        eye = torch.eye(M).to(x.dtype)
         if init == 0: # random init
             vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
         elif init == 1: #hierarchical initialization -- x_bar
@@ -134,7 +133,7 @@ class EM:
             "E-step"
             W = Rcj @ Rx.inverse() #shape of[J,N,F,M,M]
             chat = W @ x[...,None] #shape of[J,N,F,M,1]
-            Rcjhat = chat @ chat.transpose(-1,-2).conj() + (1- W)@Rcj #shape of[J,N,F,M,M]
+            Rcjhat = chat @ chat.transpose(-1,-2).conj() + (eye- W)@Rcj #shape of[J,N,F,M,M]
 
             "M-step"
             vhat = (Rj.inverse()[:,None,None]@Rcjhat).diagonal(dim1=-1, dim2=-2).mean(-1)
@@ -149,30 +148,34 @@ class EM:
                 print(f'EM early stop at iter {i}')
                 break
 
-        return chat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
+        return chat, vhat, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
 
 #%%
 EMs, EMh = [], []
 for snr in ['inf']:#, 20, 10, 5, 0]:
     ems, emh = [], []
-    for ind in range(3):
+    for ind in range(1):
         if snr != 'inf':
             data = awgn(x_all[ind], snr)
         else:
             data = x_all[ind]
-        # try:
-        shat, Hhat, vhat, Rb, ll_traj, rank = \
-            EM().em_func_(data, J=3, max_iter=301, thresh_K=10, init=1)
-        temp_s = s_corr_cuda(shat.squeeze().abs()[None], s_all[ind:ind+1].abs()).item()
-        temp = h_corr(Hhat.squeeze(), h[ind])
+        chat, vhat, ll_traj, rank = \
+                EM().em_func_(data, J=3, max_iter=301, thresh_K=10, init=1)
+        shat = chat.permute(3,4,1,2,0).abs()[0]
+        hhat = chat[...,0].permute(1,2,3,0).mean(dim=(0,1))
+        plt.figure()
+        plt.plot(ll_traj)
+        plt.title(f'{ind}')
+        plt.show()
+
+        temp_s = s_corr_cuda(shat, s_all[ind:ind+1].abs()).item()
+        temp = h_corr(hhat, h[ind])
         if ind %1 == 0 :
             print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)
 
         ems.append(temp_s)
         emh.append(temp)
-        # except:
-        #     print(f"An exception occurred {ind}")
-    
+
     EMs.append(sum(ems)/len(ems))
     EMh.append(sum(emh)/len(emh))
 
