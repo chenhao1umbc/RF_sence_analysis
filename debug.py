@@ -1,95 +1,182 @@
-"""This is file is coded based on cell mode, 
-if True gives each cell an indent, so that each cell could be folded in vs code
-"""
-#%% load dependency 
-if True:
-    from utils import *
-    os.environ["CUDA_VISIBLE_DEVICES"]="0"
-    plt.rcParams['figure.dpi'] = 150
-    torch.set_printoptions(linewidth=160)
-    torch.set_default_dtype(torch.double)
+#%% 3-class EM
+from utils import *
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+plt.rcParams['figure.dpi'] = 150
+torch.set_printoptions(linewidth=160)
+from datetime import datetime
+print('starting date time ', datetime.now())
 
-    #%% Prepare full rank data5 J=6 classes 18ktr, with rangdom AOA, 1000 val, 1000 te
-    from utils import *
-    plt.rcParams['figure.dpi'] = 150
-    torch.set_printoptions(linewidth=160)
+"make the result reproducible"
+seed = 1
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)       # current GPU seed
+torch.cuda.manual_seed_all(seed)   # all GPUs seed
+torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cuda
+torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
 
-    "raw data processing"
-    FT = 64  #48, 64, 80, 100, 128, 200, 256
-    var_name = ['ble', 'bt', 'fhss1', 'fhss2', 'wifi1', 'wifi2']
-    data = {}
-    def get_ftdata(data_pool):
-        *_, Z = stft(data_pool, fs=4e7, nperseg=FT, boundary='zeros')
-        x = torch.tensor(np.roll(Z, FT//2, axis=1))  # roll nperseg//2
-        return x.to(torch.cfloat)
+#%%
+d, s, h = torch.load('../data/nem_ss/val1kM3FT64_xsh_data5.pt')
+N, F = s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
+ratio = d.abs().amax(dim=(1,2,3))
+x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
+s_all = s.abs().permute(0,2,3,1) 
 
-    for i in range(6):
-        temp = sio.loadmat('/home/chenhao1/Matlab/LMdata/compressed/'+var_name[i]+f'_{FT}_2k.mat')
-        x = torch.tensor(temp['x'])
-        x =  x/((x.abs()**2).sum(dim=(1),keepdim=True)**0.5)# normalize
-        data[i] = x
-    s = []
-    for i in range(6):
-        s.append(get_ftdata(data[i])) # ble [2000,F,T]
+class EM:
+    def calc_ll(self, x, vhat, Rj):
+        """ Rj shape of [J, M, M]
+            vhat shape of [N, F, J]
+            x shape of [N, F, M]
+        """
+        Rcj = vhat[...,None, None]*Rj[:,None,None] #shape of[J,N,F,M,M]
+        Rx = Rcj.sum(0) #shape of[N,F,M,M]
+        l = -(np.pi*Rx.det()).log() - (x[..., None, :].conj()@Rx.inverse()@x[..., None]).squeeze()
+        return Rcj, Rx, l.sum()
 
-    torch.manual_seed(0)
-    M, J, I = 6, 6, 20000
-    ln = 0
-    res = []
-    combs = torch.combinations(torch.tensor([i for i in range(J)]))
-    while ln < I:
-        aoa = torch.rand(J ,int(2e4))*160 +10# get more then remove diff_angle<10
-        for i, c in enumerate(combs):
-            if i == 0:
-                id = (aoa[c[0]]- aoa[c[1]]).abs() > 10 # ang diff >10
-            else:
-                id = torch.logical_and(id, (aoa[c[0]]- aoa[c[1]]).abs() > 10)
-        ln += id.sum() # id contains True and False
-        res.append(aoa[:,id])
-        print('one loop')
-    aoa = torch.cat(res, dim=1)
-    aoa = aoa[:,:I].to(torch.cfloat)/180*np.pi  # [J, I] to radius angle 
-    def get_channel(aoa):
-        los = torch.arange(M)[:,None].to(torch.cfloat)*np.pi #[M,1]
-        h_los = (los@aoa.t().sin()[:,None]*1j).exp() #[I, M, J]
-        p_aoa = torch.tensor([30, -30, 45, -45, 60])
-        att = torch.tensor([0.5**0.5, 0.5, 0.5**1.5, 0.5**2, 0.5**2.5])
-        ch = [h_los]
-        for ii in range(M-1): # multi-path
-            ang = p_aoa[ii] + aoa
-            ch.append(att[ii]*(los@ang.t().sin()[:,None]*1j).exp())
-        ch = torch.stack(ch)
-        mix = ch.sum(0)
-        return ch, mix
-    ch, mix_ch = get_channel(aoa=aoa)
+    def rand_init(self, x, J=6, Hscale=1, Rbscale=100, seed=0):
+        N, F, M = x.shape
+        torch.torch.manual_seed(seed)
+        dtype = x.dtype
 
-    #%%
-    hall = mix_ch.reshape(10,2000,M,J) # this is easier for later processing
-    "training data"
-    x = []
-    for i in range(9):
-        temp = 0
-        for j in range(J):
-            idx = torch.randperm(2000)
-            temp += hall[i,:,:,j:j+1]@s[j][idx].reshape(2000,1,-1)
-        x.append(temp)
-    x = torch.cat(x, dim=0).reshape(-1,M,FT,FT+2)
-    x = awgn_batch(x, snr=40, seed=1) # added white noise
-    plt.figure()
-    plt.imshow(x[0,0].abs(), aspect='auto', interpolation='None')
-    plt.title('One example of 3-component mixture')
-    torch.save(x[:18000], f'tr18kM6FT{FT}_data5.pt')
+        vhat = torch.randn(N, F, J).abs().to(dtype)
+        Hhat = torch.randn(M, J, dtype=dtype)*Hscale
+        Rb = torch.eye(M).to(dtype)*Rbscale
+        Rj = torch.zeros(J, M, M).to(dtype)
+        return vhat, Hhat, Rb, Rj
 
-    "val and test data"
-    temp = 0
-    svaltest = []
-    for j in range(J):
-        idx = torch.randperm(2000)
-        temp += hall[9,:,:,j:j+1]@s[j][idx].reshape(2000,1,-1)
-        svaltest.append(s[j][idx])
-    valtest = temp.reshape(-1,M,FT,FT+2)
-    valtest = awgn_batch(valtest, snr=40, seed=1) # added white noise
-    svaltest = torch.tensor(np.stack(svaltest, axis=1))  #[2000, J, F, T]
-    torch.save((valtest[:1000], svaltest[:1000], hall[9,:1000]), f'val1kM6FT{FT}_xsh_data5.pt')
-    torch.save((valtest[1000:], svaltest[1000:], hall[9,1000:]), f'test1kM6FT{FT}_xsh_data5.pt')
-    print('done')
+    def cluster_init(self, x, J=3, K=60, init=1, Rbscale=1e-3, showfig=False):
+        """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
+        Given : A set X of obejects{x1,...,xn}
+                A cluster distance function dist(c1, c2)
+        for i=1 to n
+            ci = {xi}
+        end for
+        C = {c1, ..., cn}
+        I = n+1
+        While I>1 do
+            (cmin1, cmin2) = minimum dist(ci, cj) for all ci, cj in C
+            remove cmin1 and cmin2 from C
+            add {cmin1, cmin2} to C
+            I = I - 1
+        end while
+
+        However, this naive algorithm does not fit large samples. 
+        Here we use scipy function for the linkage.
+        J is how many clusters
+        """   
+        dtype = x.dtype
+        N, F, M = x.shape
+
+        "get data and clusters ready"
+        x_norm = ((x[:,:,None,:]@x[..., None].conj())**0.5)[:,:,0]
+        if init==1: x_ = x/x_norm * (-1j*x[...,0:1].angle()).exp() # shape of [N, F, M] x_bar
+        else: x_ = x * (-1j*x[...,0:1].angle()).exp() # the x_tilde in Duong's paper
+        data = x_.reshape(N*F, M)
+        I = data.shape[0]
+        C = [[i] for i in range(I)]  # initial cluster
+
+        "calc. affinity matrix and linkage"
+        perms = torch.combinations(torch.arange(len(C)))
+        d = data[perms]
+        table = ((d[:,0] - d[:,1]).abs()**2).sum(dim=-1)**0.5
+        from scipy.cluster.hierarchy import dendrogram, linkage
+        z = linkage(table, method='average')
+        if showfig: dn = dendrogram(z, p=3, truncate_mode='level')
+
+        "find the max J cluster and sample index"
+        zind = torch.tensor(z).to(torch.int)
+        flag = torch.cat((torch.ones(I), torch.zeros(I)))
+        c = C + [[] for i in range(I)]
+        for i in range(z.shape[0]-K): # threshold of K level to stop
+            c[i+I] = c[zind[i][0]] + c[zind[i][1]]
+            flag[i+I], flag[zind[i][0]], flag[zind[i][1]] = 1, 0, 0
+        ind = (flag == 1).nonzero(as_tuple=True)[0]
+        dict_c = {}  # which_cluster: how_many_nodes
+        for i in range(ind.shape[0]):
+            dict_c[ind[i].item()] = len(c[ind[i]])
+        dict_c_sorted = {k:v for k,v in sorted(dict_c.items(), key=lambda x: -x[1])}
+        cs = []
+        for i, (k,v) in enumerate(dict_c_sorted.items()):
+            if i == J:
+                break
+            cs.append(c[k])
+
+        "initil the EM variables"
+        Hhat = torch.rand(M, J, dtype=dtype)
+        Rj = torch.rand(J, M, M, dtype=dtype)
+        for i in range(J):
+            d = data[torch.tensor(cs[i])] # shape of [I_cj, M]
+            Hhat[:,i] = d.mean(0)
+            Rj[i] = (d[..., None] @ d[:,None,:].conj()).mean(0)
+        vhat = torch.ones(J, N, F).abs().to(dtype)
+        Rb = torch.eye(M).to(dtype)*Rbscale
+
+        return vhat, Hhat, Rb, Rj
+
+    def em_func_(self, x, J=3, max_iter=501, lamb=0, thresh_K=60, init=1):
+        """init=0: random
+            init=1: x_bar original
+            init=else: x_tilde duong's paper
+        """
+        #  EM algorithm for one complex sample
+        N, F, M = x.shape
+        NF= N*F
+        Rxxhat = (x[...,None] @ x[..., None, :].conj()).sum((0,1))/NF
+        if init == 0: # random init
+            vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
+        elif init == 1: #hierarchical initialization -- x_bar
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, K=thresh_K, init=init)
+        else:  #hierarchical initialization -- x_tilde
+            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, K=thresh_K, init=init)
+        
+        Rcj, Rx, ll = self.calc_ll(x, vhat, Rj)
+        ll_traj = []
+        for i in range(max_iter):
+            "E-step"
+            W = Rcj @ Rx.inverse() #shape of[J,N,F,M,M]
+            chat = W @ x[...,None] #shape of[J,N,F,M,1]
+            Rcjhat = chat @ chat.transpose(-1,-2).conj() + (1- W)@Rcj #shape of[J,N,F,M,M]
+
+            "M-step"
+            vhat = (Rj.inverse()[:,None,None]@Rcjhat).diagonal(dim1=-1, dim2=-2).mean(-1)
+            vhat.real = threshold(vhat.real, floor=1e-10, ceiling=10)
+            vhat.imag = vhat.imag - vhat.imag
+            Rj = (Rcjhat/vhat[...,None, None]).mean(dim=(1,2)) #shape of[J,M,M]
+
+            "compute log-likelyhood"
+            Rcj, Rx, ll = self.calc_ll(x, vhat, Rj)
+            ll_traj.append(ll.item())
+            if i > 30 and abs((ll_traj[i] - ll_traj[i-3])/ll_traj[i-3]) <1e-4:
+                print(f'EM early stop at iter {i}')
+                break
+
+        return chat, Hhat, vhat, Rb, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
+
+#%%
+EMs, EMh = [], []
+for snr in ['inf']:#, 20, 10, 5, 0]:
+    ems, emh = [], []
+    for ind in range(3):
+        if snr != 'inf':
+            data = awgn(x_all[ind], snr)
+        else:
+            data = x_all[ind]
+        # try:
+        shat, Hhat, vhat, Rb, ll_traj, rank = \
+            EM().em_func_(data, J=3, max_iter=301, thresh_K=10, init=1)
+        temp_s = s_corr_cuda(shat.squeeze().abs()[None], s_all[ind:ind+1].abs()).item()
+        temp = h_corr(Hhat.squeeze(), h[ind])
+        if ind %1 == 0 :
+            print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)
+
+        ems.append(temp_s)
+        emh.append(temp)
+        # except:
+        #     print(f"An exception occurred {ind}")
+    
+    EMs.append(sum(ems)/len(ems))
+    EMh.append(sum(emh)/len(emh))
+
+    print(f'done with one snr {snr}')
+    print('EMs, EMh', EMs, EMh)
+
+print('End date time ', datetime.now())
