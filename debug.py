@@ -1,7 +1,8 @@
-#%% 3-class EM
+"""6class best is s76ca epoch 660"""
+#%%
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
-plt.rcParams['figure.dpi'] = 150
+plt.rcParams['figure.dpi'] = 100
 torch.set_printoptions(linewidth=160)
 from datetime import datetime
 print('starting date time ', datetime.now())
@@ -14,172 +15,275 @@ torch.cuda.manual_seed_all(seed)   # all GPUs seed
 torch.backends.cudnn.deterministic = True  #True uses deterministic alg. for cuda
 torch.backends.cudnn.benchmark = False  #False cuda use the fixed alg. for conv, may slower
 
-#%%
-d, s, h = torch.load('../data/nem_ss/val1kM3FT64_xsh_data5.pt')
-N, F = s.shape[-1], s.shape[-2] # h is M*J matrix, here 6*6
-ratio = d.abs().amax(dim=(1,2,3))
-x_all = (d/ratio[:,None,None,None]).permute(0,2,3,1)
-s_all = s.abs().permute(0,2,3,1) 
 
-class EM:
-    def calc_ll(self, x, vhat, Rj):
-        """ Rj shape of [J, M, M]
-            vhat shape of [N, F, J]
-            x shape of [N, F, M]
-        """
-        Rcj = vhat[...,None, None]*Rj[:,None,None] #shape of[J,N,F,M,M]
-        Rx = Rcj.sum(0) #shape of[N,F,M,M]
-        l = -(np.pi*Rx.det()).log() - (x[..., None, :].conj()@Rx.inverse()@x[..., None]).squeeze()
-        return Rcj, Rx, l.sum()
+#%% define models and functions
+from vae_modules import *
+def lower2matrix(rx42):
+    ind = torch.tril_indices(6,6)
+    indx = np.diag_indices(6)
+    rx_inv_hat = torch.zeros(rx42.shape[0], 6, 6, dtype=torch.cfloat).cuda()
+    rx_inv_hat[:, ind[0], ind[1]] = rx42[:, :21] + 1j*rx42[:,21:]
+    rx_inv_hat = rx_inv_hat + rx_inv_hat.permute(0,2,1).conj()
+    rx_inv_hat[:, indx[0], indx[1]] = rx_inv_hat[:, indx[0], indx[1]]/2
+    return rx_inv_hat
 
-    def rand_init(self, x, J=6, Hscale=1, Rbscale=100, seed=0):
-        N, F, M = x.shape
-        torch.torch.manual_seed(seed)
-        dtype = x.dtype
+class NN_fr0(nn.Module):
+    """This is recursive Wiener filter version, with Rb threshold of [1e-3, 1e2]
+    Input shape [I,M,N,F], e.g.[32,3,100,100]
+    J <=K
+    """
+    def __init__(self, M, K, im_size):
+        super().__init__()
+        self.dz = 32
+        self.J, self.M = K, M
+        down_size = int(im_size/4)
+        self.mainnet = nn.Sequential(
+            FC_layer_g(42, 128),
+            FC_layer_g(128, 128),
+        )
+        self.hnet = nn.Sequential(
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 64),
+            nn.Linear(64, 6)
+        )
+        self.rxnet = nn.Sequential(
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 64),
+            FC_layer_g(64, 64),
+            nn.Linear(64, 42)
+        )
 
-        vhat = torch.randn(N, F, J).abs().to(dtype)
-        Hhat = torch.randn(M, J, dtype=dtype)*Hscale
-        Rb = torch.eye(M).to(dtype)*Rbscale
-        Rj = torch.zeros(J, M, M).to(dtype)
-        return vhat, Hhat, Rb, Rj
+        self.encoder = nn.Sequential(
+            Down_g(in_channels=1, out_channels=64),
+            DoubleConv_g(in_channels=64, out_channels=32),
+            Down_g(in_channels=32, out_channels=16),
+            DoubleConv_g(in_channels=16, out_channels=1),
+            )
+        self.fc1 = nn.Linear(down_size*down_size, 2*self.dz)
+        self.decoder = nn.Sequential(
+            nn.Linear(self.dz, down_size*down_size),
+            Reshape(-1, 1, down_size, down_size),
+            Up_g(in_channels=1, out_channels=64),
+            DoubleConv_g(in_channels=64, out_channels=32),
+            Up_g(in_channels=32, out_channels=16),
+            DoubleConv_g(in_channels=16, out_channels=8),
+            nn.Conv2d(8, 8, kernel_size=3, padding=(1,2)),
+            nn.GroupNorm(num_groups=max(8//4,1), num_channels=8),
+            nn.LeakyReLU(inplace=True),
+            OutConv(in_channels=8, out_channels=1),
+            ) 
+        self.bilinear = nn.Linear(self.dz, self.dz, bias=False)
 
-    def cluster_init(self, x, J=3, K=60, init=1, Rbscale=1e-3, showfig=False):
-        """psudo code, https://www.saedsayad.com/clustering_hierarchical.htm
-        Given : A set X of obejects{x1,...,xn}
-                A cluster distance function dist(c1, c2)
-        for i=1 to n
-            ci = {xi}
-        end for
-        C = {c1, ..., cn}
-        I = n+1
-        While I>1 do
-            (cmin1, cmin2) = minimum dist(ci, cj) for all ci, cj in C
-            remove cmin1 and cmin2 from C
-            add {cmin1, cmin2} to C
-            I = I - 1
-        end while
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
 
-        However, this naive algorithm does not fit large samples. 
-        Here we use scipy function for the linkage.
-        J is how many clusters
-        """   
-        dtype = x.dtype
-        N, F, M = x.shape
+    def forward(self, x):     
+        btsize, M, N, F = x.shape
+        z_all, v_all, h_all = [], [], []
+        xj = x.permute(0,2,3,1)[...,None]  # shape of [I,N,F,M,1]
+        for i in range(self.J):
+            "Get H estimation"
+            ind = torch.tril_indices(M,M)
+            rx = (xj@xj.transpose(-1,-2).conj()).mean(dim=(1,2))
+            rx_lower = rx[:, ind[0], ind[1]]
+            mid =self.mainnet(torch.stack((rx_lower.real,rx_lower.imag),\
+                 dim=1).reshape(btsize,-1))
+            ang = self.hnet(mid)*np.pi
+            hhat = (1j*ang).exp()  # shape of [I, M]
+            h_all.append(hhat)
 
-        "get data and clusters ready"
-        x_norm = ((x[:,:,None,:]@x[..., None].conj())**0.5)[:,:,0]
-        if init==1: x_ = x/x_norm * (-1j*x[...,0:1].angle()).exp() # shape of [N, F, M] x_bar
-        else: x_ = x * (-1j*x[...,0:1].angle()).exp() # the x_tilde in Duong's paper
-        data = x_.reshape(N*F, M)
-        I = data.shape[0]
-        C = [[i] for i in range(I)]  # initial cluster
-
-        "calc. affinity matrix and linkage"
-        perms = torch.combinations(torch.arange(len(C)))
-        d = data[perms]
-        table = ((d[:,0] - d[:,1]).abs()**2).sum(dim=-1)**0.5
-        from scipy.cluster.hierarchy import dendrogram, linkage
-        z = linkage(table, method='average')
-        if showfig: dn = dendrogram(z, p=3, truncate_mode='level')
-
-        "find the max J cluster and sample index"
-        zind = torch.tensor(z).to(torch.int)
-        flag = torch.cat((torch.ones(I), torch.zeros(I)))
-        c = C + [[] for i in range(I)]
-        for i in range(z.shape[0]-K): # threshold of K level to stop
-            c[i+I] = c[zind[i][0]] + c[zind[i][1]]
-            flag[i+I], flag[zind[i][0]], flag[zind[i][1]] = 1, 0, 0
-        ind = (flag == 1).nonzero(as_tuple=True)[0]
-        dict_c = {}  # which_cluster: how_many_nodes
-        for i in range(ind.shape[0]):
-            dict_c[ind[i].item()] = len(c[ind[i]])
-        dict_c_sorted = {k:v for k,v in sorted(dict_c.items(), key=lambda x: -x[1])}
-        cs = []
-        for i, (k,v) in enumerate(dict_c_sorted.items()):
-            if i == J:
-                break
-            cs.append(c[k])
-
-        "initil the EM variables"
-        Hhat = torch.rand(M, J, dtype=dtype)
-        Rj = torch.rand(J, M, M, dtype=dtype)
-        for i in range(J):
-            d = data[torch.tensor(cs[i])] # shape of [I_cj, M]
-            Hhat[:,i] = d.mean(0)
-            Rj[i] = (d[..., None] @ d[:,None,:].conj()).mean(0)
-        vhat = torch.ones(J, N, F).abs().to(dtype)
-        Rb = torch.eye(M).to(dtype)*Rbscale
-
-        return vhat, Hhat, Rb, Rj
-
-    def em_func_(self, x, J=3, max_iter=501, lamb=0, thresh_K=60, init=1):
-        """init=0: random
-            init=1: x_bar original
-            init=else: x_tilde duong's paper
-        """
-        #  EM algorithm for one complex sample
-        N, F, M = x.shape
-        eye = torch.eye(M).to(x.dtype)
-        if init == 0: # random init
-            vhat, Hhat, Rb, Rj = self.rand_init(x, J=J)
-        elif init == 1: #hierarchical initialization -- x_bar
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, K=thresh_K, init=init)
-        else:  #hierarchical initialization -- x_tilde
-            vhat, Hhat, Rb, Rj = self.cluster_init(x, J=J, K=thresh_K, init=init)
+            "Get Rx inverse"
+            rx_index = self.rxnet(mid)
+            rx_inv = lower2matrix(rx_index) # shape of [I, M, M]
         
-        Rcj, Rx, ll = self.calc_ll(x, vhat, Rj)
-        ll_traj = []
-        for i in range(max_iter):
-            "E-step"
-            W = Rcj @ Rx.inverse() #shape of[J,N,F,M,M]
-            chat = W @ x[...,None] #shape of[J,N,F,M,1]
-            Rcjhat = chat @ chat.transpose(-1,-2).conj() + (eye- W)@Rcj #shape of[J,N,F,M,M]
+            "Encoder part"
+            w = rx_inv@hhat[...,None] / \
+                (hhat[:,None,:].conj()@rx_inv@hhat[...,None])
+            shat = w.permute(0,2,1).conj()[:,None,None]@xj
+            xx = self.encoder(shat.squeeze()[:,None].abs())
 
-            "M-step"
-            vhat = (Rj.inverse()[:,None,None]@Rcjhat).diagonal(dim1=-1, dim2=-2).mean(-1)
-            vhat.real = threshold(vhat.real, floor=1e-10, ceiling=10)
-            vhat.imag = vhat.imag - vhat.imag
-            Rj = (Rcjhat/vhat[...,None, None]).mean(dim=(1,2)) #shape of[J,M,M]
+            "Get latent variable"
+            zz = self.fc1(xx.reshape(btsize,-1))
+            mu = zz[:,::2]
+            logvar = zz[:,1::2]
+            z = self.reparameterize(mu, logvar)
+            wz = self.bilinear(z)
+            z_all.append(z)
+            z_all.append(wz)
+            
+            "Decoder to get V"
+            v = self.decoder(z).square().squeeze()  # shape of [I,N,F]
+            v_all.append(threshold(v, floor=1e-6, ceiling=1e2)) # 1e-6 to 1e2
 
-            "compute log-likelyhood"
-            Rcj, Rx, ll = self.calc_ll(x, vhat, Rj)
-            ll_traj.append(ll.item())
-            if i > 30 and abs((ll_traj[i] - ll_traj[i-3])/ll_traj[i-3]) <1e-4:
-                print(f'EM early stop at iter {i}')
-                break
+            "Remove the current component"
+            rxinvh = rx_inv@hhat[...,None]  # shape of [I, M, 1]
+            v_rxinv_h_herm = (v[...,None, None]*rxinvh[:,None, None]).transpose(-1,-2).conj() 
+            cj = hhat[:,None,None,:,None] * (v_rxinv_h_herm @ xj) # shape of [I,N,F,M,1]
+            xj = xj - cj
+       
+        Hhat = torch.stack(h_all, 2) # shape:[I, M, J]
+        vhat = torch.stack(v_all, 3).to(torch.cfloat) # shape:[I, N, F, J]
+        zall = torch.stack(z_all, dim=1)
 
-        return chat, vhat, ll_traj, torch.linalg.matrix_rank(Rcj).double().mean()
+        # Rb = (b@b.conj().permute(0,1,2,4,3)).mean(dim=(1,2)).squeeze()
+        eye = torch.eye(M, device='cuda')
+        Rb = torch.stack(tuple(eye for ii in range(btsize)), 0)*1e-3
 
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar, zall
+
+class NN_fr1(nn.Module):
+    """This is recursive Wiener filter version, with Rb threshold of [1e-3, 1e2]
+    Input shape [I,M,N,F], e.g.[32,3,100,100]
+    J <=K
+    """
+    def __init__(self, M, K, im_size):
+        super().__init__()
+        self.dz = 32
+        self.J, self.M = K, M
+        down_size = int(im_size/4)
+        self.mainnet = nn.Sequential(
+            FC_layer_g(42, 128),
+            FC_layer_g(128, 128),
+        )
+        self.hnet = nn.Sequential(
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 64),
+            FC_layer_g(64, 64),
+            nn.Linear(64, 6),
+            nn.Tanh()
+        )
+        self.rxnet = nn.Sequential(
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 128),
+            FC_layer_g(128, 64),
+            FC_layer_g(64, 64),
+            nn.Linear(64, 42)
+        )
+
+        self.encoder = nn.Sequential(
+            Down_g(in_channels=1, out_channels=64),
+            DoubleConv_g(in_channels=64, out_channels=32),
+            Down_g(in_channels=32, out_channels=16),
+            DoubleConv_g(in_channels=16, out_channels=1),
+            )
+        self.fc1 = nn.Linear(down_size*down_size, 2*self.dz)
+        self.decoder = nn.Sequential(
+            nn.Linear(self.dz, down_size*down_size),
+            Reshape(-1, 1, down_size, down_size),
+            Up_g(in_channels=1, out_channels=64),
+            DoubleConv_g(in_channels=64, out_channels=32),
+            Up_g(in_channels=32, out_channels=16),
+            DoubleConv_g(in_channels=16, out_channels=8),
+            nn.Conv2d(8, 8, kernel_size=3, padding=(1,2)),
+            nn.GroupNorm(num_groups=max(8//4,1), num_channels=8),
+            nn.LeakyReLU(inplace=True),
+            OutConv(in_channels=8, out_channels=1),
+            ) 
+        self.bilinear = nn.Linear(self.dz, self.dz, bias=False)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def forward(self, x):     
+        btsize, M, N, F = x.shape
+        z_all, v_all, h_all = [], [], []
+        xj = x.permute(0,2,3,1)[...,None]  # shape of [I,N,F,M,1]
+        for i in range(self.J):
+            "Get H estimation"
+            ind = torch.tril_indices(M,M)
+            rx = (xj@xj.transpose(-1,-2).conj()).mean(dim=(1,2))
+            rx_lower = rx[:, ind[0], ind[1]]
+            mid =self.mainnet(torch.stack((rx_lower.real,rx_lower.imag),\
+                 dim=1).reshape(btsize,-1))
+            ang = self.hnet(mid)*np.pi
+            hhat = (1j*ang).exp()  # shape of [I, M]
+            h_all.append(hhat)
+
+            "Get Rx inverse"
+            rx_index = self.rxnet(mid)
+            rx_inv = lower2matrix(rx_index) # shape of [I, M, M]
+        
+            "Encoder part"
+            w = rx_inv@hhat[...,None] / \
+                (hhat[:,None,:].conj()@rx_inv@hhat[...,None])
+            shat = w.permute(0,2,1).conj()[:,None,None]@xj
+            xx = self.encoder(shat.squeeze()[:,None].abs())
+
+            "Get latent variable"
+            zz = self.fc1(xx.reshape(btsize,-1))
+            mu = zz[:,::2]
+            logvar = zz[:,1::2]
+            z = self.reparameterize(mu, logvar)
+            wz = self.bilinear(z)
+            z_all.append(z)
+            z_all.append(wz)
+            
+            "Decoder to get V"
+            v = self.decoder(z).square().squeeze()  # shape of [I,N,F]
+            v_all.append(threshold(v, floor=1e-6, ceiling=1e2)) # 1e-6 to 1e2
+
+            "Remove the current component"
+            rxinvh = rx_inv@hhat[...,None]  # shape of [I, M, 1]
+            v_rxinv_h_herm = (v[...,None, None]*rxinvh[:,None, None]).transpose(-1,-2).conj() 
+            cj = hhat[:,None,None,:,None] * (v_rxinv_h_herm @ xj) # shape of [I,N,F,M,1]
+            xj = xj - cj
+       
+        Hhat = torch.stack(h_all, 2) # shape:[I, M, J]
+        vhat = torch.stack(v_all, 3).to(torch.cfloat) # shape:[I, N, F, J]
+        zall = torch.stack(z_all, dim=1)
+
+        # Rb = (b@b.conj().permute(0,1,2,4,3)).mean(dim=(1,2)).squeeze()
+        eye = torch.eye(M, device='cuda')
+        Rb = torch.stack(tuple(eye for ii in range(btsize)), 0)*1e-3
+
+        return vhat.diag_embed(), Hhat, Rb, mu, logvar, zall
 #%%
-EMs, EMh = [], []
-for snr in ['inf']:#, 20, 10, 5, 0]:
-    ems, emh = [], []
-    for ind in range(1):
-        if snr != 'inf':
-            data = awgn(x_all[ind], snr)
-        else:
-            data = x_all[ind]
-        chat, vhat, ll_traj, rank = \
-                EM().em_func_(data, J=3, max_iter=301, thresh_K=10, init=1)
-        shat = chat.permute(3,4,1,2,0).abs()[0]
-        hhat = chat[...,0].permute(1,2,3,0).mean(dim=(0,1))
-        plt.figure()
-        plt.plot(ll_traj)
-        plt.title(f'{ind}')
-        plt.show()
+I = 18000 # how many samples
+M, N, F, J = 6, 64, 66, 6
+eps = 5e-4
+opts = {}
+opts['batch_size'] = 128
+opts['n_epochs'] = 701
+opts['lr'] = 1e-3
 
-        temp_s = s_corr_cuda(shat, s_all[ind:ind+1].abs()).item()
-        temp = h_corr(hhat, h[ind])
-        if ind %1 == 0 :
-            print(f'At epoch {ind}', ' h corr: ', temp, ' s corr:', temp_s)
+xval, sval, hgt = torch.load('../data/nem_ss/test1kM6FT64_xsh_data4.pt')
+sval= sval.permute(0,2,3,1)
+xval = xval/xval.abs().amax(dim=(1,2,3), keepdim=True)
+data = Data.TensorDataset(xval, sval, hgt)
+dval = Data.DataLoader(data, batch_size=200, drop_last=True)
 
-        ems.append(temp_s)
-        emh.append(temp)
-
-    EMs.append(sum(ems)/len(ems))
-    EMh.append(sum(emh)/len(emh))
-
-    print(f'done with one snr {snr}')
-    print('EMs, EMh', EMs, EMh)
-
+loss_iter, loss_tr, loss1, loss2, loss_eval = [], [], [], [], []
+#%%
+print('Start date time ', datetime.now())
+model = torch.load(f'../data/data_ss/models/fv2k/model_epoch660.pt')
+model.eval()
+hall, sall = [], []
+with torch.no_grad():
+    for snr in ['inf',20, 10, 5, 0]:
+        av_hcorr, av_scorr = [], []
+        for i, (x, s, h) in enumerate(dval):
+            if snr != 'inf':
+                x = awgn_batch(x, snr)
+            xval_cuda = x.cuda()
+            Rs, Hhat_val, Rb, mu, logvar, zall= model(xval_cuda)                
+            Rxperm = Hhat_val@Rs.permute(1,2,0,3,4)@Hhat_val.transpose(-1,-2).conj() + Rb
+            shatperm = Rs.permute(1,2,0,3,4)@Hhat_val.conj().transpose(-1,-2)\
+                    @Rxperm.inverse()@xval_cuda.permute(2,3,0,1)[...,None]
+            shat = shatperm.permute(2,0,1,3,4).squeeze().cpu().abs()
+            for ind in range(x.shape[0]):
+                hh = Hhat_val[ind]
+                av_hcorr.append(h_corr_cuda(hh, h[ind].cuda()).cpu().item())
+                av_scorr.append(s_corr_cuda(s[ind:ind+1].abs().cuda(), \
+                    shat[ind:ind+1].cuda()).cpu().item())
+        hall.append(sum(av_hcorr)/len(av_hcorr))
+        sall.append(sum(av_scorr)/len(av_scorr))
+print(hall, sall)
+print('done')
 print('End date time ', datetime.now())
