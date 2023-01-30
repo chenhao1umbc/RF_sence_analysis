@@ -1,4 +1,4 @@
-"""6class best is s76ca epoch 660"""
+"""6class best is s121 epoch 575"""
 #%%
 from utils import *
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
@@ -27,7 +27,7 @@ def lower2matrix(rx42):
     rx_inv_hat[:, indx[0], indx[1]] = rx_inv_hat[:, indx[0], indx[1]]/2
     return rx_inv_hat
 
-class NN_fr0(nn.Module):
+class NN_fr2(nn.Module):
     """This is recursive Wiener filter version, with Rb threshold of [1e-3, 1e2]
     Input shape [I,M,N,F], e.g.[32,3,100,100]
     J <=K
@@ -45,7 +45,8 @@ class NN_fr0(nn.Module):
             FC_layer_g(128, 128),
             FC_layer_g(128, 128),
             FC_layer_g(128, 64),
-            nn.Linear(64, 6)
+            FC_layer_g(64, 64),
+            nn.Linear(64, int((M-1)*2))
         )
         self.rxnet = nn.Sequential(
             FC_layer_g(128, 128),
@@ -85,6 +86,7 @@ class NN_fr0(nn.Module):
         btsize, M, N, F = x.shape
         z_all, v_all, h_all = [], [], []
         xj = x.permute(0,2,3,1)[...,None]  # shape of [I,N,F,M,1]
+        row1 = torch.ones(btsize, 1, dtype=xj.dtype, device=xj.device)
         for i in range(self.J):
             "Get H estimation"
             ind = torch.tril_indices(M,M)
@@ -92,8 +94,9 @@ class NN_fr0(nn.Module):
             rx_lower = rx[:, ind[0], ind[1]]
             mid =self.mainnet(torch.stack((rx_lower.real,rx_lower.imag),\
                  dim=1).reshape(btsize,-1))
-            ang = self.hnet(mid)*np.pi
-            hhat = (1j*ang).exp()  # shape of [I, M]
+            real_imag = self.hnet(mid)*np.pi #[I, (M-1)*2]
+            last_M_1 = real_imag[:, :(M-1)] + 1j*real_imag[:, (M-1):] 
+            hhat = torch.cat([row1, last_M_1], dim=-1)
             h_all.append(hhat)
 
             "Get Rx inverse"
@@ -135,115 +138,6 @@ class NN_fr0(nn.Module):
 
         return vhat.diag_embed(), Hhat, Rb, mu, logvar, zall
 
-class NN_fr1(nn.Module):
-    """This is recursive Wiener filter version, with Rb threshold of [1e-3, 1e2]
-    Input shape [I,M,N,F], e.g.[32,3,100,100]
-    J <=K
-    """
-    def __init__(self, M, K, im_size):
-        super().__init__()
-        self.dz = 32
-        self.J, self.M = K, M
-        down_size = int(im_size/4)
-        self.mainnet = nn.Sequential(
-            FC_layer_g(42, 128),
-            FC_layer_g(128, 128),
-        )
-        self.hnet = nn.Sequential(
-            FC_layer_g(128, 128),
-            FC_layer_g(128, 128),
-            FC_layer_g(128, 64),
-            FC_layer_g(64, 64),
-            nn.Linear(64, 6),
-            nn.Tanh()
-        )
-        self.rxnet = nn.Sequential(
-            FC_layer_g(128, 128),
-            FC_layer_g(128, 128),
-            FC_layer_g(128, 64),
-            FC_layer_g(64, 64),
-            nn.Linear(64, 42)
-        )
-
-        self.encoder = nn.Sequential(
-            Down_g(in_channels=1, out_channels=64),
-            DoubleConv_g(in_channels=64, out_channels=32),
-            Down_g(in_channels=32, out_channels=16),
-            DoubleConv_g(in_channels=16, out_channels=1),
-            )
-        self.fc1 = nn.Linear(down_size*down_size, 2*self.dz)
-        self.decoder = nn.Sequential(
-            nn.Linear(self.dz, down_size*down_size),
-            Reshape(-1, 1, down_size, down_size),
-            Up_g(in_channels=1, out_channels=64),
-            DoubleConv_g(in_channels=64, out_channels=32),
-            Up_g(in_channels=32, out_channels=16),
-            DoubleConv_g(in_channels=16, out_channels=8),
-            nn.Conv2d(8, 8, kernel_size=3, padding=(1,2)),
-            nn.GroupNorm(num_groups=max(8//4,1), num_channels=8),
-            nn.LeakyReLU(inplace=True),
-            OutConv(in_channels=8, out_channels=1),
-            ) 
-        self.bilinear = nn.Linear(self.dz, self.dz, bias=False)
-
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(std)
-        return mu + eps*std
-
-    def forward(self, x):     
-        btsize, M, N, F = x.shape
-        z_all, v_all, h_all = [], [], []
-        xj = x.permute(0,2,3,1)[...,None]  # shape of [I,N,F,M,1]
-        for i in range(self.J):
-            "Get H estimation"
-            ind = torch.tril_indices(M,M)
-            rx = (xj@xj.transpose(-1,-2).conj()).mean(dim=(1,2))
-            rx_lower = rx[:, ind[0], ind[1]]
-            mid =self.mainnet(torch.stack((rx_lower.real,rx_lower.imag),\
-                 dim=1).reshape(btsize,-1))
-            ang = self.hnet(mid)*np.pi
-            hhat = (1j*ang).exp()  # shape of [I, M]
-            h_all.append(hhat)
-
-            "Get Rx inverse"
-            rx_index = self.rxnet(mid)
-            rx_inv = lower2matrix(rx_index) # shape of [I, M, M]
-        
-            "Encoder part"
-            w = rx_inv@hhat[...,None] / \
-                (hhat[:,None,:].conj()@rx_inv@hhat[...,None])
-            shat = w.permute(0,2,1).conj()[:,None,None]@xj
-            xx = self.encoder(shat.squeeze()[:,None].abs())
-
-            "Get latent variable"
-            zz = self.fc1(xx.reshape(btsize,-1))
-            mu = zz[:,::2]
-            logvar = zz[:,1::2]
-            z = self.reparameterize(mu, logvar)
-            wz = self.bilinear(z)
-            z_all.append(z)
-            z_all.append(wz)
-            
-            "Decoder to get V"
-            v = self.decoder(z).square().squeeze()  # shape of [I,N,F]
-            v_all.append(threshold(v, floor=1e-6, ceiling=1e2)) # 1e-6 to 1e2
-
-            "Remove the current component"
-            rxinvh = rx_inv@hhat[...,None]  # shape of [I, M, 1]
-            v_rxinv_h_herm = (v[...,None, None]*rxinvh[:,None, None]).transpose(-1,-2).conj() 
-            cj = hhat[:,None,None,:,None] * (v_rxinv_h_herm @ xj) # shape of [I,N,F,M,1]
-            xj = xj - cj
-       
-        Hhat = torch.stack(h_all, 2) # shape:[I, M, J]
-        vhat = torch.stack(v_all, 3).to(torch.cfloat) # shape:[I, N, F, J]
-        zall = torch.stack(z_all, dim=1)
-
-        # Rb = (b@b.conj().permute(0,1,2,4,3)).mean(dim=(1,2)).squeeze()
-        eye = torch.eye(M, device='cuda')
-        Rb = torch.stack(tuple(eye for ii in range(btsize)), 0)*1e-3
-
-        return vhat.diag_embed(), Hhat, Rb, mu, logvar, zall
 #%%
 I = 18000 # how many samples
 M, N, F, J = 6, 64, 66, 6
@@ -260,15 +154,17 @@ data = Data.TensorDataset(xval, sval, hgt)
 dval = Data.DataLoader(data, batch_size=200, drop_last=True)
 
 loss_iter, loss_tr, loss1, loss2, loss_eval = [], [], [], [], []
+model = torch.load('../data/data_ss/models/fv3a5/model_epoch415.pt')
+
 #%%
 print('Start date time ', datetime.now())
-model = torch.load(f'../data/data_ss/models/fv2k/model_epoch660.pt')
 model.eval()
 hall, sall = [], []
 with torch.no_grad():
-    for snr in ['inf',20, 10, 5, 0]:
+    for snr in ['inf', 20, 10, 5, 0]:
         av_hcorr, av_scorr = [], []
         for i, (x, s, h) in enumerate(dval):
+            print(snr, i)
             if snr != 'inf':
                 x = awgn_batch(x, snr)
             xval_cuda = x.cuda()
